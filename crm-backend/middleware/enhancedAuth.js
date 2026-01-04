@@ -1,7 +1,9 @@
 import jwtService from '../services/jwtService.js';
 import User from '../models/User.js';
+import Session from '../models/Session.js';
+import RoleConfig from '../models/RoleConfig.js';
 
-// Authenticate user with JWT token
+// Enhanced authenticate middleware with session management
 export const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -15,12 +17,20 @@ export const authenticate = async (req, res, next) => {
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
-    // Verify token
-    const decoded = jwtService.verifyAccessToken(token);
+    // Validate session and get user info
+    const sessionResult = await jwtService.validateSession(token);
     
-    // Get user from database to ensure they still exist and are active
-    const user = await User.findById(decoded.userId).select('-password -otpSecret');
-    
+    if (!sessionResult.valid) {
+      return res.status(401).json({
+        success: false,
+        message: sessionResult.error || 'Invalid or expired token'
+      });
+    }
+
+    const user = sessionResult.user;
+    const session = sessionResult.session;
+
+    // Additional user status checks
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -42,8 +52,9 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    // Add user info to request
+    // Add user info and session to request
     req.user = user;
+    req.session = session;
     req.token = token;
     
     next();
@@ -56,14 +67,19 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-// Authorize user based on roles
+// Authorize user based on roles with hierarchy support
 export const authorize = (...roles) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
+    }
+
+    // Super admin has access to everything
+    if (req.user.role === 'super_admin') {
+      return next();
     }
 
     if (!roles.includes(req.user.role)) {
@@ -77,9 +93,62 @@ export const authorize = (...roles) => {
   };
 };
 
+// Check if user can manage another user based on role hierarchy
+export const canManageUser = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    // Super admin can manage anyone
+    if (req.user.role === 'super_admin') {
+      return next();
+    }
+
+    const targetUserId = req.params.userId || req.body.userId;
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Target user ID is required'
+      });
+    }
+
+    // Get target user
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Target user not found'
+      });
+    }
+
+    // Check if current user can manage target user's role
+    const canManage = await RoleConfig.canManageRole(req.user.role, targetUser.role);
+    
+    if (!canManage) {
+      return res.status(403).json({
+        success: false,
+        message: 'Insufficient permissions to manage this user'
+      });
+    }
+
+    req.targetUser = targetUser;
+    next();
+  } catch (error) {
+    console.error('User management authorization error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Authorization check failed'
+    });
+  }
+};
+
 // Check specific module permission
 export const checkModulePermission = (module) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -106,7 +175,7 @@ export const checkModulePermission = (module) => {
 
 // Check specific action permission
 export const checkActionPermission = (action) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -133,7 +202,7 @@ export const checkActionPermission = (action) => {
 
 // Combined module and action permission check
 export const checkPermission = (module, action) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -195,22 +264,13 @@ export const checkOwnership = (resourceUserField = 'userId') => {
   };
 };
 
-// Rate limiting for sensitive operations
+// Enhanced rate limiting for sensitive operations with session tracking
 export const rateLimitSensitive = (maxAttempts = 5, windowMs = 15 * 60 * 1000) => {
   const attempts = new Map();
 
   return (req, res, next) => {
     const key = req.ip + (req.user ? req.user._id : '');
     const now = Date.now();
-    
-    // Clean up old entries periodically
-    if (attempts.size > 1000) {
-      for (const [k, v] of attempts.entries()) {
-        if (now > v.resetTime) {
-          attempts.delete(k);
-        }
-      }
-    }
     
     if (!attempts.has(key)) {
       attempts.set(key, { count: 1, resetTime: now + windowMs });
@@ -225,14 +285,79 @@ export const rateLimitSensitive = (maxAttempts = 5, windowMs = 15 * 60 * 1000) =
     }
 
     if (userAttempts.count >= maxAttempts) {
-      const remainingTime = Math.ceil((userAttempts.resetTime - now) / 1000 / 60);
+      // Flag suspicious activity if session exists
+      if (req.session) {
+        req.session.flagSuspiciousActivity('multipleFailedAttempts');
+      }
+      
       return res.status(429).json({
         success: false,
-        message: `Too many attempts. Please try again in ${remainingTime} minutes.`
+        message: 'Too many attempts. Please try again later.',
+        retryAfter: Math.ceil((userAttempts.resetTime - now) / 1000)
       });
     }
 
     userAttempts.count++;
+    next();
+  };
+};
+
+// Middleware to detect and handle suspicious activity
+export const detectSuspiciousActivity = async (req, res, next) => {
+  try {
+    if (!req.user || !req.session) {
+      return next();
+    }
+
+    const currentIP = req.ip;
+    const currentUserAgent = req.get('User-Agent');
+
+    // Check for IP address changes
+    if (req.session.ipAddress !== currentIP) {
+      await req.session.flagSuspiciousActivity('unusualLocation');
+      console.warn(`IP address change detected for user ${req.user._id}: ${req.session.ipAddress} -> ${currentIP}`);
+    }
+
+    // Check for user agent changes (could indicate session hijacking)
+    if (req.session.userAgent !== currentUserAgent) {
+      await req.session.flagSuspiciousActivity('suspiciousActivity');
+      console.warn(`User agent change detected for user ${req.user._id}`);
+    }
+
+    // Check for concurrent sessions
+    const activeSessions = await Session.getActiveSessions(req.user._id);
+    if (activeSessions.length > 3) { // Allow max 3 concurrent sessions
+      await req.session.flagSuspiciousActivity('concurrentSessions');
+      console.warn(`Multiple concurrent sessions detected for user ${req.user._id}: ${activeSessions.length}`);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in suspicious activity detection:', error);
+    next(); // Continue even if detection fails
+  }
+};
+
+// Middleware to require fresh authentication for sensitive operations
+export const requireFreshAuth = (maxAge = 30 * 60 * 1000) => { // 30 minutes default
+  return (req, res, next) => {
+    if (!req.session) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    const sessionAge = Date.now() - new Date(req.session.createdAt).getTime();
+    
+    if (sessionAge > maxAge) {
+      return res.status(401).json({
+        success: false,
+        message: 'Fresh authentication required for this operation',
+        code: 'FRESH_AUTH_REQUIRED'
+      });
+    }
+
     next();
   };
 };

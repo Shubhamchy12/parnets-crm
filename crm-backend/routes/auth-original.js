@@ -69,8 +69,8 @@ router.post('/login', rateLimitSensitive(5, 15 * 60 * 1000), async (req, res) =>
       });
     }
 
-    // Send OTP via email (static service will just log to console)
-    const emailResult = await staticOtpService.sendOTPEmail(user.email, otpResult.otp, user.name, 'login');
+    // Send OTP via email
+    const emailResult = await enhancedOtpService.sendOTPEmail(user.email, otpResult.otp, user.name, 'login');
     
     if (!emailResult.success) {
       return res.status(500).json({
@@ -81,12 +81,11 @@ router.post('/login', rateLimitSensitive(5, 15 * 60 * 1000), async (req, res) =>
 
     res.json({
       success: true,
-      message: 'OTP sent to your email address. Use 123456 for development.',
+      message: 'OTP sent to your email address',
       data: {
         email: user.email,
         otpSent: true,
-        expiresIn: 10, // minutes
-        developmentOTP: '123456' // Show OTP in response for development
+        expiresIn: 10 // minutes (updated to match enhanced service)
       }
     });
 
@@ -122,15 +121,14 @@ router.post('/verify-otp', rateLimitSensitive(3, 15 * 60 * 1000), async (req, re
       });
     }
 
-    // Verify OTP using static service
-    const otpVerification = await staticOtpService.verifyOTP(user._id, otp, 'login');
+    // Verify OTP using enhanced service
+    const otpVerification = await enhancedOtpService.verifyOTP(user._id, otp, 'login');
 
     if (!otpVerification.valid) {
       return res.status(401).json({
         success: false,
         message: otpVerification.error,
-        attemptsRemaining: otpVerification.attemptsRemaining,
-        hint: 'Use 123456 for development'
+        attemptsRemaining: otpVerification.attemptsRemaining
       });
     }
 
@@ -196,8 +194,8 @@ router.post('/resend-otp', rateLimitSensitive(3, 5 * 60 * 1000), async (req, res
       });
     }
 
-    // Generate new OTP using static service
-    const otpResult = await staticOtpService.generateOTPWithExpiry(user._id, 'login');
+    // Generate new OTP using enhanced service
+    const otpResult = await enhancedOtpService.generateOTPWithExpiry(user._id, 'login');
     
     if (!otpResult) {
       return res.status(500).json({
@@ -206,8 +204,8 @@ router.post('/resend-otp', rateLimitSensitive(3, 5 * 60 * 1000), async (req, res
       });
     }
 
-    // Send OTP via email (static service will just log to console)
-    const emailResult = await staticOtpService.sendOTPEmail(user.email, otpResult.otp, user.name, 'login');
+    // Send OTP via email
+    const emailResult = await enhancedOtpService.sendOTPEmail(user.email, otpResult.otp, user.name, 'login');
     
     if (!emailResult.success) {
       return res.status(500).json({
@@ -218,11 +216,10 @@ router.post('/resend-otp', rateLimitSensitive(3, 5 * 60 * 1000), async (req, res
 
     res.json({
       success: true,
-      message: 'New OTP sent to your email address. Use 123456 for development.',
+      message: 'New OTP sent to your email address',
       data: {
         email: user.email,
-        expiresIn: 10, // minutes
-        developmentOTP: '123456' // Show OTP in response for development
+        expiresIn: 10 // minutes (updated to match enhanced service)
       }
     });
 
