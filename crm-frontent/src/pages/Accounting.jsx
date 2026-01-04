@@ -42,70 +42,6 @@ const Accounting = () => {
     notes: ''
   });
 
-  // Mock accounting data
-  const mockTransactions = [
-    {
-      _id: '1',
-      transactionId: 'TXN-2024-001',
-      type: 'income',
-      category: 'project_payment',
-      amount: 500000,
-      description: 'E-commerce Website Development Payment',
-      date: '2024-01-15',
-      clientName: 'TechCorp Solutions',
-      projectName: 'E-commerce Website',
-      paymentMethod: 'bank_transfer',
-      reference: 'INV-2024-001',
-      taxAmount: 90000,
-      notes: 'Final payment received'
-    },
-    {
-      _id: '2',
-      transactionId: 'TXN-2024-002',
-      type: 'expense',
-      category: 'software_license',
-      amount: 25000,
-      description: 'Adobe Creative Suite License',
-      date: '2024-01-10',
-      clientName: '',
-      projectName: '',
-      paymentMethod: 'credit_card',
-      reference: 'ADOBE-2024-001',
-      taxAmount: 4500,
-      notes: 'Annual license renewal'
-    },
-    {
-      _id: '3',
-      transactionId: 'TXN-2024-003',
-      type: 'income',
-      category: 'amc_payment',
-      amount: 120000,
-      description: 'AMC Payment - Website Maintenance',
-      date: '2024-01-12',
-      clientName: 'Digital Solutions Inc',
-      projectName: 'Website Maintenance',
-      paymentMethod: 'upi',
-      reference: 'AMC-2024-001',
-      taxAmount: 21600,
-      notes: 'Quarterly AMC payment'
-    },
-    {
-      _id: '4',
-      transactionId: 'TXN-2024-004',
-      type: 'expense',
-      category: 'office_rent',
-      amount: 50000,
-      description: 'Office Rent - January 2024',
-      date: '2024-01-01',
-      clientName: '',
-      projectName: '',
-      paymentMethod: 'bank_transfer',
-      reference: 'RENT-JAN-2024',
-      taxAmount: 0,
-      notes: 'Monthly office rent'
-    }
-  ];
-
   useEffect(() => {
     loadTransactions();
   }, []);
@@ -113,19 +49,16 @@ const Accounting = () => {
   const loadTransactions = async () => {
     try {
       setLoading(true);
-      // Try to fetch from API, fallback to mock data
-      try {
-        const response = await api.get('/accounting/transactions');
-        if (response.success) {
-          setTransactions(response.data.transactions);
-        }
-      } catch (err) {
-        // Use mock data if API fails
-        setTransactions(mockTransactions);
+      const response = await api.get('/accounting/transactions');
+      if (response.success) {
+        setTransactions(response.data.transactions || []);
+      } else {
+        setTransactions([]);
       }
     } catch (err) {
       console.error('Error loading transactions:', err);
-      setTransactions(mockTransactions);
+      toast.error('Failed to load transactions');
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -204,20 +137,26 @@ const Accounting = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Accounting</h1>
-        <div className="flex items-center space-x-3">
-          <button className="btn-secondary flex items-center space-x-2">
-            <Download className="h-4 w-4" />
-            <span>Export</span>
-          </button>
-          <button 
-            onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Transaction</span>
-          </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Accounting</h1>
+            <p className="text-blue-100">Manage financial transactions</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button className="btn-secondary bg-white/20 hover:bg-white/30 border border-white/30 text-white">
+              <Download className="h-4 w-4" />
+              Export
+            </button>
+            <button 
+              onClick={() => setShowModal(true)}
+              className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30"
+            >
+              <Plus className="h-5 w-5" />
+              Add Transaction
+            </button>
+          </div>
         </div>
       </div>
 
@@ -429,19 +368,10 @@ const Accounting = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
+              <h2 className="text-xl font-bold">
                 {selectedTransaction ? 'Edit Transaction' : 'Add New Transaction'}
               </h2>
-              <button 
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">

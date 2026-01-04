@@ -174,15 +174,21 @@ const ActivityLogs = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Activity Logs</h1>
-        <button 
-          onClick={exportLogs}
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Download className="h-4 w-4" />
-          <span>Export Logs</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Activity Logs</h1>
+            <p className="text-blue-100">Monitor system activities</p>
+          </div>
+          <button 
+            onClick={exportLogs}
+            className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30"
+          >
+            <Download className="h-5 w-5" />
+            Export Logs
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

@@ -30,12 +30,14 @@ export const AuthProvider = ({ children }) => {
             // Token is invalid, clear storage
             localStorage.removeItem('authToken');
             localStorage.removeItem('userData');
+            localStorage.removeItem('refreshToken');
           }
         } catch (error) {
           console.error('Auth initialization error:', error);
           // Token is invalid, clear storage
           localStorage.removeItem('authToken');
           localStorage.removeItem('userData');
+          localStorage.removeItem('refreshToken');
         }
       }
       setLoading(false);
@@ -44,24 +46,21 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, []);
 
-  const login = async (email, password, otp) => {
-    try {
-      setLoading(true);
-      const response = await apiService.login(email, password, otp);
-      
-      if (response.success) {
-        setUser(response.data.user);
-        return { success: true };
-      } else {
-        return { success: false, error: response.message };
+  // Auto-refresh token when it's about to expire
+  useEffect(() => {
+    if (!user) return;
+
+    const refreshInterval = setInterval(async () => {
+      try {
+        await apiService.refreshToken();
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+        logout();
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, error: error.message || 'Login failed' };
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, 23 * 60 * 60 * 1000); // Refresh every 23 hours (token expires in 24h)
+
+    return () => clearInterval(refreshInterval);
+  }, [user]);
 
   const logout = async () => {
     try {
@@ -75,9 +74,10 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
-    login,
+    setUser,
     logout,
-    loading
+    loading,
+    isAuthenticated: !!user
   };
 
   return (

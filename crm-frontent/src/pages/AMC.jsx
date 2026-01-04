@@ -1,20 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
-  Filter, 
   Edit, 
   Trash2, 
   Eye, 
   Shield,
-  Calendar,
   CheckCircle,
   XCircle,
   Clock,
   AlertTriangle,
   DollarSign,
-  Settings,
-  RefreshCw
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -43,70 +41,6 @@ const AMC = () => {
     contactPhone: ''
   });
 
-  // Mock AMC data
-  const mockAMCContracts = [
-    {
-      _id: '1',
-      contractNumber: 'AMC-2024-001',
-      clientName: 'TechCorp Solutions',
-      projectName: 'E-commerce Website',
-      serviceType: 'website_maintenance',
-      startDate: '2024-01-01',
-      endDate: '2024-12-31',
-      renewalDate: '2024-12-31',
-      amount: 120000,
-      paymentFrequency: 'monthly',
-      status: 'active',
-      description: 'Complete website maintenance and support',
-      services: ['Bug fixes', 'Security updates', 'Content updates', '24/7 support'],
-      contactPerson: 'Rajesh Kumar',
-      contactEmail: 'rajesh@techcorp.com',
-      contactPhone: '+91-9876543210',
-      lastServiceDate: '2024-01-15',
-      nextServiceDate: '2024-02-15'
-    },
-    {
-      _id: '2',
-      contractNumber: 'AMC-2024-002',
-      clientName: 'Digital Solutions Inc',
-      projectName: 'Mobile Application',
-      serviceType: 'app_maintenance',
-      startDate: '2024-01-15',
-      endDate: '2024-01-14',
-      renewalDate: '2024-01-14',
-      amount: 180000,
-      paymentFrequency: 'quarterly',
-      status: 'expiring_soon',
-      description: 'Mobile app maintenance and updates',
-      services: ['App updates', 'Bug fixes', 'Performance optimization', 'Store management'],
-      contactPerson: 'Priya Sharma',
-      contactEmail: 'priya@digitalsolutions.com',
-      contactPhone: '+91-9876543211',
-      lastServiceDate: '2024-01-10',
-      nextServiceDate: '2024-02-10'
-    },
-    {
-      _id: '3',
-      contractNumber: 'AMC-2023-015',
-      clientName: 'StartupXYZ',
-      projectName: 'Company Website',
-      serviceType: 'hosting_support',
-      startDate: '2023-06-01',
-      endDate: '2023-12-31',
-      renewalDate: '2023-12-31',
-      amount: 60000,
-      paymentFrequency: 'annually',
-      status: 'expired',
-      description: 'Hosting and basic support services',
-      services: ['Hosting', 'SSL certificate', 'Basic support'],
-      contactPerson: 'Amit Patel',
-      contactEmail: 'amit@startupxyz.com',
-      contactPhone: '+91-9876543212',
-      lastServiceDate: '2023-12-15',
-      nextServiceDate: null
-    }
-  ];
-
   useEffect(() => {
     loadAMCContracts();
   }, []);
@@ -114,19 +48,16 @@ const AMC = () => {
   const loadAMCContracts = async () => {
     try {
       setLoading(true);
-      // Try to fetch from API, fallback to mock data
-      try {
-        const response = await api.get('/amc');
-        if (response.success) {
-          setAmcContracts(response.data.contracts);
-        }
-      } catch (err) {
-        // Use mock data if API fails
-        setAmcContracts(mockAMCContracts);
+      const response = await api.get('/amc');
+      if (response.success) {
+        setAmcContracts(response.data.contracts || []);
+      } else {
+        setAmcContracts([]);
       }
     } catch (err) {
       console.error('Error loading AMC contracts:', err);
-      setAmcContracts(mockAMCContracts);
+      toast.error('Failed to load AMC contracts');
+      setAmcContracts([]);
     } finally {
       setLoading(false);
     }
@@ -191,9 +122,9 @@ const AMC = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'expiring_soon': return 'bg-yellow-100 text-yellow-800';
-      case 'expired': return 'bg-red-100 text-red-800';
+      case 'active': return 'badge-success';
+      case 'expiring_soon': return 'badge-warning';
+      case 'expired': return 'badge-error';
       case 'suspended': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -214,56 +145,77 @@ const AMC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">AMC Management</h1>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add AMC Contract</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">AMC Management</h1>
+            <p className="text-blue-100">Annual Maintenance Contracts</p>
+          </div>
+          <button 
+            onClick={() => setShowModal(true)}
+            className="btn-primary"
+          >
+            <Plus className="h-5 w-5" />
+            Add Contract
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card">
+        <div className="stats-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Value</p>
               <p className="text-2xl font-bold text-blue-600">₹{totalValue.toLocaleString()}</p>
+              <div className="flex items-center space-x-1 text-green-600">
+                <TrendingUp className="h-4 w-4" />
+                <span className="text-sm font-medium">+12%</span>
+              </div>
             </div>
-            <DollarSign className="h-8 w-8 text-blue-500" />
+            <div className="bg-blue-600 p-3 rounded-lg">
+              <DollarSign className="h-6 w-6 text-white" />
+            </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stats-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
               <p className="text-2xl font-bold text-green-600">{activeCount}</p>
+              <p className="text-sm text-gray-500">{activeCount} contracts</p>
             </div>
-            <CheckCircle className="h-8 w-8 text-green-500" />
+            <div className="bg-green-600 p-3 rounded-lg">
+              <CheckCircle className="h-6 w-6 text-white" />
+            </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stats-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Expiring Soon</p>
               <p className="text-2xl font-bold text-yellow-600">{expiringCount}</p>
+              <p className="text-sm text-yellow-600">Needs attention</p>
             </div>
-            <AlertTriangle className="h-8 w-8 text-yellow-500" />
+            <div className="bg-yellow-500 p-3 rounded-lg">
+              <AlertTriangle className="h-6 w-6 text-white" />
+            </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stats-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Expired</p>
               <p className="text-2xl font-bold text-red-600">{expiredCount}</p>
+              <p className="text-sm text-red-600">Renewal required</p>
             </div>
-            <XCircle className="h-8 w-8 text-red-500" />
+            <div className="bg-red-500 p-3 rounded-lg">
+              <XCircle className="h-6 w-6 text-white" />
+            </div>
           </div>
         </div>
       </div>
@@ -272,10 +224,10 @@ const AMC = () => {
       <div className="card">
         <div className="flex items-center space-x-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search AMC contracts..."
+              placeholder="Search contracts..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field pl-10"
@@ -284,7 +236,7 @@ const AMC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="input-field"
+            className="input-field min-w-[150px]"
           >
             <option value="">All Status</option>
             <option value="active">Active</option>
@@ -295,87 +247,88 @@ const AMC = () => {
         </div>
       </div>
 
-      {/* AMC Contracts List */}
-      <div className="card">
+      {/* Contracts Table */}
+      <div className="table-container">
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading AMC contracts...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading contracts...</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full">
+              <thead className="table-header">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Contract
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Client
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Service Type
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                    Service & Amount
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Renewal Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {filteredContracts.map((contract) => (
-                  <tr key={contract._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Shield className="h-5 w-5 text-gray-400 mr-2" />
+                  <tr key={contract._id} className="table-row">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-blue-600 rounded-lg p-2">
+                          <Shield className="h-5 w-5 text-white" />
+                        </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{contract.contractNumber}</div>
+                          <div className="font-medium text-gray-900">{contract.contractNumber}</div>
                           <div className="text-sm text-gray-500">{contract.projectName}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{contract.clientName}</div>
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">{contract.clientName}</div>
                       <div className="text-sm text-gray-500">{contract.contactPerson}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {contract.serviceType.replace('_', ' ').toUpperCase()}
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">₹{contract.amount.toLocaleString()}</div>
+                      <div className="text-sm text-gray-500 capitalize">{contract.serviceType.replace('_', ' ')}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">₹{contract.amount.toLocaleString()}</div>
-                      <div className="text-sm text-gray-500">{contract.paymentFrequency}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-2">
                         {getStatusIcon(contract.status)}
-                        <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(contract.status)}`}>
+                        <span className={`badge ${getStatusColor(contract.status)}`}>
                           {contract.status.replace('_', ' ')}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(contract.renewalDate).toLocaleDateString()}
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">
+                        {new Date(contract.renewalDate).toLocaleDateString()}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {Math.ceil((new Date(contract.renewalDate) - new Date()) / (1000 * 60 * 60 * 24))} days left
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900">
+                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button className="text-green-600 hover:text-green-900">
+                        <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg">
                           <RefreshCw className="h-4 w-4" />
                         </button>
-                        <button className="text-orange-600 hover:text-orange-900">
+                        <button className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg">
                           <Edit className="h-4 w-4" />
                         </button>
-                        <button className="text-red-600 hover:text-red-900">
+                        <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -388,31 +341,31 @@ const AMC = () => {
         )}
       </div>
 
-      {/* Add/Edit AMC Contract Modal */}
+      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
-                {selectedContract ? 'Edit AMC Contract' : 'Add New AMC Contract'}
-              </h2>
-              <button 
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold">
+                  {selectedContract ? 'Edit AMC Contract' : 'Add New AMC Contract'}
+                </h2>
+                <button 
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="text-white hover:bg-white/20 rounded-lg p-2"
+                >
+                  <XCircle className="h-6 w-6" />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contract Number *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract Number *</label>
                   <input
                     type="text"
                     name="contractNumber"
@@ -424,9 +377,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Client Name *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
                   <input
                     type="text"
                     name="clientName"
@@ -438,9 +389,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Project Name *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Project Name *</label>
                   <input
                     type="text"
                     name="projectName"
@@ -452,9 +401,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Service Type *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Service Type *</label>
                   <select
                     name="serviceType"
                     value={formData.serviceType}
@@ -471,9 +418,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Start Date *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
                   <input
                     type="date"
                     name="startDate"
@@ -485,9 +430,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    End Date *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
                   <input
                     type="date"
                     name="endDate"
@@ -499,9 +442,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Annual Amount *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Annual Amount *</label>
                   <input
                     type="number"
                     name="amount"
@@ -513,9 +454,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Payment Frequency *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Frequency *</label>
                   <select
                     name="paymentFrequency"
                     value={formData.paymentFrequency}
@@ -531,9 +470,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Person *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person *</label>
                   <input
                     type="text"
                     name="contactPerson"
@@ -545,9 +482,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Email *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email *</label>
                   <input
                     type="email"
                     name="contactEmail"
@@ -559,9 +494,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Phone
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
                   <input
                     type="tel"
                     name="contactPhone"
@@ -572,9 +505,7 @@ const AMC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
                   <select
                     name="status"
                     value={formData.status}
@@ -591,9 +522,7 @@ const AMC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   name="description"
                   value={formData.description}
@@ -618,7 +547,7 @@ const AMC = () => {
                   type="submit"
                   className="btn-primary"
                 >
-                  {selectedContract ? 'Update' : 'Add'} Contract
+                  {selectedContract ? 'Update' : 'Create'} Contract
                 </button>
               </div>
             </form>

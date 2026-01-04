@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/auth/Login';
+import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
@@ -101,18 +102,135 @@ function App() {
               }
             >
               <Route index element={<Navigate to="/dashboard" />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="employees" element={<Employees />} />
-              <Route path="projects" element={<Projects />} />
-              <Route path="activity-logs" element={<ActivityLogs />} />
-              <Route path="attendance" element={<Attendance />} />
-              <Route path="clients" element={<Clients />} />
-              <Route path="payments" element={<Payments />} />
-              <Route path="procurement" element={<Procurement />} />
-              <Route path="invoices" element={<Invoices />} />
-              <Route path="amc" element={<AMC />} />
-              <Route path="support" element={<SupportTickets />} />
-              <Route path="accounting" element={<Accounting />} />
+              <Route 
+                path="dashboard" 
+                element={
+                  <RoleProtectedRoute requiredModule="dashboard">
+                    <Dashboard />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="employees" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin']} 
+                    requiredModule="employees"
+                  >
+                    <Employees />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="projects" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'sub_admin', 'developer', 'sales', 'client']} 
+                    requiredModule="projects"
+                  >
+                    <Projects />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="activity-logs" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin']} 
+                    requiredModule="activity_logs"
+                  >
+                    <ActivityLogs />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="attendance" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'sub_admin', 'employee']} 
+                    requiredModule="attendance"
+                  >
+                    <Attendance />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="clients" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'sub_admin', 'sales']} 
+                    requiredModule="clients"
+                  >
+                    <Clients />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="payments" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'accounts_manager']} 
+                    requiredModule="payments"
+                  >
+                    <Payments />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="procurement" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin']} 
+                    requiredModule="procurement"
+                  >
+                    <Procurement />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="invoices" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'accounts_manager', 'sales', 'client']} 
+                    requiredModule="invoices"
+                  >
+                    <Invoices />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="amc" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin']} 
+                    requiredModule="amc"
+                  >
+                    <AMC />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="support" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'sub_admin', 'support_executive', 'client']} 
+                    requiredModule="support"
+                  >
+                    <SupportTickets />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="accounting" 
+                element={
+                  <RoleProtectedRoute 
+                    allowedRoles={['super_admin', 'admin', 'accounts_manager']} 
+                    requiredModule="accounting"
+                  >
+                    <Accounting />
+                  </RoleProtectedRoute>
+                } 
+              />
             </Route>
           </Routes>
         </div>

@@ -1,5 +1,4 @@
-import React from 'react';
-import { Bell, LogOut, User } from 'lucide-react';
+import { Bell, LogOut, User, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import Logo from '../common/Logo';
 
@@ -7,50 +6,52 @@ const Header = () => {
   const { user, logout } = useAuth();
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+    <header className="bg-white shadow-md border-b-2 border-slate-200 px-6 py-4">
       <div className="flex items-center justify-between">
+        {/* Left - Logo and Title */}
         <div className="flex items-center space-x-4">
           <Logo size="small" showText={false} />
           <div>
-            <h2 className="text-xl font-semibold text-gray-800">
-              Welcome back, {user?.name}
-            </h2>
-            <p className="text-gray-600 text-sm">
-              {new Date().toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </p>
+            <h1 className="text-xl font-bold text-slate-800">CRM System</h1>
+            <p className="text-sm text-slate-600">Welcome back, {user?.name}</p>
           </div>
         </div>
 
+        {/* Right - Search and User */}
         <div className="flex items-center space-x-4">
-          <button className="relative p-2 text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search..."
+              className="pl-10 pr-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64 bg-white text-slate-800"
+            />
+          </div>
+
+          {/* Notifications */}
+          <button className="relative p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-300">
             <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 bg-primary-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
               3
             </span>
           </button>
 
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center ring-2 ring-primary-100">
-                <User className="h-4 w-4 text-white" />
-              </div>
-              <div className="text-sm">
-                <p className="font-medium text-gray-800">{user?.name}</p>
-                <p className="text-primary-600 capitalize font-medium">{user?.role?.replace('_', ' ')}</p>
-              </div>
+          {/* User Profile */}
+          <div className="flex items-center space-x-3 bg-slate-50 rounded-lg p-2 border border-slate-300">
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+              <User className="h-4 w-4 text-white" />
             </div>
-
+            <div className="text-sm">
+              <p className="font-medium text-slate-800">{user?.name}</p>
+              <p className="text-blue-600 capitalize font-medium">{user?.role?.replace('_', ' ')}</p>
+            </div>
             <button
               onClick={logout}
-              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-300"
               title="Logout"
             >
-              <LogOut className="h-5 w-5" />
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>

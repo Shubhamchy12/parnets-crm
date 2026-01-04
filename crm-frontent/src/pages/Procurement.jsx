@@ -299,15 +299,21 @@ const Procurement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Procurement Management</h1>
-        <button 
-          onClick={openModal}
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Purchase Order</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Procurement Management</h1>
+            <p className="text-blue-100">Manage purchase orders and vendors</p>
+          </div>
+          <button 
+            onClick={openModal}
+            className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30"
+          >
+            <Plus className="h-5 w-5" />
+            Add Purchase Order
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -488,19 +494,10 @@ const Procurement = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
+              <h2 className="text-xl font-bold">
                 {selectedProcurement ? 'Edit Purchase Order' : 'Create New Purchase Order'}
               </h2>
-              <button 
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">

@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -76,7 +75,7 @@ const Sidebar = () => {
       roles: ['super_admin', 'admin']
     },
     { 
-      name: 'Support Tickets', 
+      name: 'Support', 
       icon: HeadphonesIcon, 
       path: '/support',
       roles: ['super_admin', 'admin', 'support_executive']
@@ -100,15 +99,19 @@ const Sidebar = () => {
   );
 
   return (
-    <div className="bg-gray-900 text-white w-64 min-h-screen flex flex-col">
-      <div className="p-4 border-b border-gray-700">
-        <Logo size="medium" showText={true} className="mb-3" />
-        <div className="ml-1">
-          <p className="text-gray-300 text-sm font-medium">{user?.name}</p>
-          <p className="text-gray-500 text-xs capitalize">{user?.role?.replace('_', ' ')}</p>
+    <div className="w-64 h-screen bg-slate-800 shadow-lg border-r border-slate-700 flex flex-col">
+      {/* Header */}
+      <div className="p-6 border-b border-slate-700 flex-shrink-0">
+        <div className="flex items-center space-x-3">
+          <Logo size="small" showText={false} />
+          <div>
+            <h2 className="text-lg font-bold text-white">CRM System</h2>
+            <p className="text-sm text-slate-300">{user?.name}</p>
+          </div>
         </div>
       </div>
 
+      {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">
         <div className="space-y-2">
           {filteredMenuItems.map((item) => {
@@ -118,20 +121,27 @@ const Sidebar = () => {
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
-                  `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 text-sm ${
+                  `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-primary-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                   }`
                 }
               >
-                <Icon className="h-5 w-5 flex-shrink-0" />
-                <span className="truncate">{item.name}</span>
+                <Icon className="h-5 w-5" />
+                <span className="font-medium">{item.name}</span>
               </NavLink>
             );
           })}
         </div>
       </nav>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-slate-700 flex-shrink-0">
+        <div className="text-center">
+          <p className="text-xs text-slate-400">© 2024 CRM System</p>
+        </div>
+      </div>
     </div>
   );
 };

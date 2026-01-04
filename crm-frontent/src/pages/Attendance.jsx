@@ -197,19 +197,25 @@ const Attendance = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
-        <div className="flex items-center space-x-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input-field"
-          />
-          <button className="btn-primary flex items-center space-x-2">
-            <Download className="h-4 w-4" />
-            <span>Export</span>
-          </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Attendance Management</h1>
+            <p className="text-blue-100">Track employee attendance</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-2 rounded-lg text-gray-900 border-0"
+            />
+            <button className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30">
+              <Download className="h-4 w-4" />
+              Export
+            </button>
+          </div>
         </div>
       </div>
 

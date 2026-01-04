@@ -43,100 +43,6 @@ const SupportTickets = () => {
     tags: []
   });
 
-  // Mock ticket data
-  const mockTickets = [
-    {
-      _id: '1',
-      ticketNumber: 'TKT-2024-001',
-      title: 'Website loading slowly',
-      description: 'The website is taking too long to load, especially on mobile devices.',
-      clientName: 'TechCorp Solutions',
-      clientEmail: 'support@techcorp.com',
-      priority: 'high',
-      status: 'in_progress',
-      category: 'technical',
-      assignedTo: 'John Developer',
-      createdDate: '2024-01-15',
-      dueDate: '2024-01-20',
-      lastUpdated: '2024-01-16',
-      tags: ['performance', 'mobile'],
-      responses: [
-        {
-          id: 1,
-          author: 'Support Team',
-          message: 'We have received your ticket and are investigating the issue.',
-          timestamp: '2024-01-15T10:30:00Z',
-          type: 'internal'
-        },
-        {
-          id: 2,
-          author: 'John Developer',
-          message: 'Found the issue with image optimization. Working on a fix.',
-          timestamp: '2024-01-16T14:20:00Z',
-          type: 'internal'
-        }
-      ]
-    },
-    {
-      _id: '2',
-      ticketNumber: 'TKT-2024-002',
-      title: 'Login functionality not working',
-      description: 'Users are unable to login to their accounts. Getting error message.',
-      clientName: 'Digital Solutions Inc',
-      clientEmail: 'admin@digitalsolutions.com',
-      priority: 'critical',
-      status: 'open',
-      category: 'bug',
-      assignedTo: 'Sarah Developer',
-      createdDate: '2024-01-16',
-      dueDate: '2024-01-17',
-      lastUpdated: '2024-01-16',
-      tags: ['authentication', 'critical'],
-      responses: [
-        {
-          id: 1,
-          author: 'Support Team',
-          message: 'Ticket created and assigned to development team.',
-          timestamp: '2024-01-16T09:15:00Z',
-          type: 'internal'
-        }
-      ]
-    },
-    {
-      _id: '3',
-      ticketNumber: 'TKT-2024-003',
-      title: 'Request for new feature',
-      description: 'Would like to add a chat feature to the website.',
-      clientName: 'StartupXYZ',
-      clientEmail: 'ceo@startupxyz.com',
-      priority: 'low',
-      status: 'resolved',
-      category: 'feature_request',
-      assignedTo: 'Mike Designer',
-      createdDate: '2024-01-10',
-      dueDate: '2024-01-25',
-      lastUpdated: '2024-01-14',
-      resolvedDate: '2024-01-14',
-      tags: ['enhancement', 'chat'],
-      responses: [
-        {
-          id: 1,
-          author: 'Support Team',
-          message: 'Thank you for your feature request. We will review and get back to you.',
-          timestamp: '2024-01-10T11:00:00Z',
-          type: 'client'
-        },
-        {
-          id: 2,
-          author: 'Mike Designer',
-          message: 'Feature has been implemented and deployed.',
-          timestamp: '2024-01-14T16:30:00Z',
-          type: 'internal'
-        }
-      ]
-    }
-  ];
-
   useEffect(() => {
     loadTickets();
   }, []);
@@ -144,19 +50,16 @@ const SupportTickets = () => {
   const loadTickets = async () => {
     try {
       setLoading(true);
-      // Try to fetch from API, fallback to mock data
-      try {
-        const response = await api.get('/support-tickets');
-        if (response.success) {
-          setTickets(response.data.tickets);
-        }
-      } catch (err) {
-        // Use mock data if API fails
-        setTickets(mockTickets);
+      const response = await api.get('/support-tickets');
+      if (response.success) {
+        setTickets(response.data.tickets || []);
+      } else {
+        setTickets([]);
       }
     } catch (err) {
       console.error('Error loading tickets:', err);
-      setTickets(mockTickets);
+      toast.error('Failed to load support tickets');
+      setTickets([]);
     } finally {
       setLoading(false);
     }
@@ -261,15 +164,21 @@ const SupportTickets = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Create Ticket</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Support Tickets</h1>
+            <p className="text-blue-100">Manage customer support requests</p>
+          </div>
+          <button 
+            onClick={() => setShowModal(true)}
+            className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30"
+          >
+            <Plus className="h-5 w-5" />
+            Create Ticket
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -459,19 +368,10 @@ const SupportTickets = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
+              <h2 className="text-xl font-bold">
                 {selectedTicket ? 'Edit Ticket' : 'Create New Ticket'}
               </h2>
-              <button 
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">

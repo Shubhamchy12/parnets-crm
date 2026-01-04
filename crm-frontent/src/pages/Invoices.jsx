@@ -43,66 +43,6 @@ const Invoices = () => {
     ]
   });
 
-  // Mock invoice data
-  const mockInvoices = [
-    {
-      _id: '1',
-      invoiceNumber: 'INV-2024-001',
-      clientName: 'TechCorp Solutions',
-      clientEmail: 'billing@techcorp.com',
-      projectName: 'E-commerce Website',
-      amount: 450000,
-      taxAmount: 81000,
-      totalAmount: 531000,
-      status: 'paid',
-      issueDate: '2024-01-01',
-      dueDate: '2024-01-15',
-      paidDate: '2024-01-14',
-      description: 'Website development and deployment',
-      items: [
-        { description: 'Frontend Development', quantity: 1, rate: 200000, amount: 200000 },
-        { description: 'Backend Development', quantity: 1, rate: 150000, amount: 150000 },
-        { description: 'Testing & Deployment', quantity: 1, rate: 100000, amount: 100000 }
-      ]
-    },
-    {
-      _id: '2',
-      invoiceNumber: 'INV-2024-002',
-      clientName: 'Digital Solutions Inc',
-      clientEmail: 'accounts@digitalsolutions.com',
-      projectName: 'Mobile App Development',
-      amount: 600000,
-      taxAmount: 108000,
-      totalAmount: 708000,
-      status: 'sent',
-      issueDate: '2024-01-05',
-      dueDate: '2024-01-20',
-      paidDate: null,
-      description: 'iOS and Android mobile application',
-      items: [
-        { description: 'Mobile App Development', quantity: 1, rate: 600000, amount: 600000 }
-      ]
-    },
-    {
-      _id: '3',
-      invoiceNumber: 'INV-2024-003',
-      clientName: 'StartupXYZ',
-      clientEmail: 'finance@startupxyz.com',
-      projectName: 'Website Maintenance',
-      amount: 25000,
-      taxAmount: 4500,
-      totalAmount: 29500,
-      status: 'overdue',
-      issueDate: '2023-12-15',
-      dueDate: '2023-12-30',
-      paidDate: null,
-      description: 'Monthly website maintenance',
-      items: [
-        { description: 'Website Maintenance', quantity: 1, rate: 25000, amount: 25000 }
-      ]
-    }
-  ];
-
   useEffect(() => {
     loadInvoices();
   }, []);
@@ -110,19 +50,16 @@ const Invoices = () => {
   const loadInvoices = async () => {
     try {
       setLoading(true);
-      // Try to fetch from API, fallback to mock data
-      try {
-        const response = await api.get('/invoices');
-        if (response.success) {
-          setInvoices(response.data.invoices);
-        }
-      } catch (err) {
-        // Use mock data if API fails
-        setInvoices(mockInvoices);
+      const response = await api.get('/invoices');
+      if (response.success) {
+        setInvoices(response.data.invoices || []);
+      } else {
+        setInvoices([]);
       }
     } catch (err) {
       console.error('Error loading invoices:', err);
-      setInvoices(mockInvoices);
+      toast.error('Failed to load invoices');
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -259,15 +196,21 @@ const Invoices = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Invoice Management</h1>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Create Invoice</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Invoice Management</h1>
+            <p className="text-blue-100">Create and manage invoices</p>
+          </div>
+          <button 
+            onClick={() => setShowModal(true)}
+            className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30"
+          >
+            <Plus className="h-5 w-5" />
+            Create Invoice
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -449,19 +392,10 @@ const Invoices = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
+              <h2 className="text-xl font-bold">
                 {selectedInvoice ? 'Edit Invoice' : 'Create New Invoice'}
               </h2>
-              <button 
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">

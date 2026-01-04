@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002/api';
 
 class ApiService {
   constructor() {
@@ -82,11 +82,54 @@ class ApiService {
   }
 
   // Authentication methods
-  async login(email, password, otp) {
-    const response = await this.post('/auth/login', { email, password, otp });
-    if (response.success && response.data.token) {
-      this.setAuthToken(response.data.token);
+  async login(email, password) {
+    const response = await this.post('/auth/login', { email, password });
+    return response;
+  }
+
+  async verifyOTP(email, otp) {
+    const response = await this.post('/auth/verify-otp', { email, otp });
+    if (response.success && response.data.accessToken) {
+      this.setAuthToken(response.data.accessToken);
       localStorage.setItem('userData', JSON.stringify(response.data.user));
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+    }
+    return response;
+  }
+
+  async resendOTP(email) {
+    return this.post('/auth/resend-otp', { email });
+  }
+
+  // Admin registration methods
+  async checkAdminRegistrationAvailable() {
+    return this.get('/auth/admin-registration-available');
+  }
+
+  async registerAdmin(name, email, password, confirmPassword) {
+    const response = await this.post('/auth/register-admin', { 
+      name, 
+      email, 
+      password, 
+      confirmPassword 
+    });
+    return response;
+  }
+
+  async getRegistrationStatus() {
+    return this.get('/auth/registration-status');
+  }
+
+  async refreshToken() {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+    
+    const response = await this.post('/auth/refresh-token', { refreshToken });
+    if (response.success) {
+      this.setAuthToken(response.data.accessToken);
+      localStorage.setItem('refreshToken', response.data.refreshToken);
     }
     return response;
   }
@@ -99,6 +142,7 @@ class ApiService {
     } finally {
       this.removeAuthToken();
       localStorage.removeItem('userData');
+      localStorage.removeItem('refreshToken');
     }
   }
 
@@ -190,6 +234,18 @@ class ApiService {
     return this.get(`/employees/${id}`);
   }
 
+  async addEmployee(employeeData) {
+    return this.post('/employees', employeeData);
+  }
+
+  async updateEmployee(id, employeeData) {
+    return this.put(`/employees/${id}`, employeeData);
+  }
+
+  async deleteEmployee(id) {
+    return this.delete(`/employees/${id}`);
+  }
+
   async getEmployeeStats() {
     return this.get('/employees/stats');
   }
@@ -226,6 +282,83 @@ class ApiService {
 
   async getActivityStats() {
     return this.get('/activities/stats');
+  }
+
+  // Dashboard methods
+  async getMonthlyStats() {
+    return this.get('/dashboard/monthly-stats');
+  }
+
+  async getDashboardStats() {
+    return this.get('/dashboard/stats');
+  }
+
+  // Support Tickets methods
+  async getSupportTickets(params = {}) {
+    return this.get('/support-tickets', params);
+  }
+
+  async createSupportTicket(data) {
+    return this.post('/support-tickets', data);
+  }
+
+  async updateSupportTicket(id, data) {
+    return this.put(`/support-tickets/${id}`, data);
+  }
+
+  async deleteSupportTicket(id) {
+    return this.delete(`/support-tickets/${id}`);
+  }
+
+  // Invoice methods
+  async getInvoices(params = {}) {
+    return this.get('/invoices', params);
+  }
+
+  async createInvoice(data) {
+    return this.post('/invoices', data);
+  }
+
+  async updateInvoice(id, data) {
+    return this.put(`/invoices/${id}`, data);
+  }
+
+  async deleteInvoice(id) {
+    return this.delete(`/invoices/${id}`);
+  }
+
+  // AMC methods
+  async getAMCContracts(params = {}) {
+    return this.get('/amc', params);
+  }
+
+  async createAMCContract(data) {
+    return this.post('/amc', data);
+  }
+
+  async updateAMCContract(id, data) {
+    return this.put(`/amc/${id}`, data);
+  }
+
+  async deleteAMCContract(id) {
+    return this.delete(`/amc/${id}`);
+  }
+
+  // Accounting methods
+  async getTransactions(params = {}) {
+    return this.get('/accounting/transactions', params);
+  }
+
+  async createTransaction(data) {
+    return this.post('/accounting/transactions', data);
+  }
+
+  async updateTransaction(id, data) {
+    return this.put(`/accounting/transactions/${id}`, data);
+  }
+
+  async deleteTransaction(id) {
+    return this.delete(`/accounting/transactions/${id}`);
   }
 
   // Health check

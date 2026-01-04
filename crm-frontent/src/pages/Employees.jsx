@@ -60,8 +60,8 @@ const Employees = () => {
     {
       _id: '1',
       name: 'John Doe',
-      email: 'john@company.com',
-      role: 'Senior Developer',
+      email: 'john.doe@company.com',
+      role: 'senior_developer',
       department: 'Development',
       salary: 75000,
       joiningDate: '2023-01-15',
@@ -72,14 +72,26 @@ const Employees = () => {
     {
       _id: '2',
       name: 'Sarah Wilson',
-      email: 'sarah@company.com',
-      role: 'Project Manager',
-      department: 'Management',
-      salary: 85000,
+      email: 'sarah.wilson@company.com',
+      role: 'ui_ux_designer',
+      department: 'Design',
+      salary: 65000,
       joiningDate: '2022-08-20',
       isActive: true,
       attendance: { percentage: 100 },
       timeline: { delayedTasks: 0 }
+    },
+    {
+      _id: '3',
+      name: 'Mike Johnson',
+      email: 'mike.johnson@company.com',
+      role: 'qa_engineer',
+      department: 'Testing & QA',
+      salary: 55000,
+      joiningDate: '2023-03-10',
+      isActive: true,
+      attendance: { percentage: 88.5 },
+      timeline: { delayedTasks: 2 }
     }
   ];
 
@@ -258,7 +270,7 @@ const Employees = () => {
         isActive: true
       };
 
-      await api.post('/employees', employeeData);
+      await api.addEmployee(employeeData);
       await loadEmployees();
       setShowAddModal(false);
       resetForm();
@@ -273,20 +285,26 @@ const Employees = () => {
   const filteredEmployees = displayEmployees.filter(employee => {
     const searchLower = searchTerm.toLowerCase();
     return (
-      employee.name.toLowerCase().includes(searchLower) ||
-      employee.email.toLowerCase().includes(searchLower) ||
-      employee.role.toLowerCase().includes(searchLower)
+      (employee.name || '').toLowerCase().includes(searchLower) ||
+      (employee.email || '').toLowerCase().includes(searchLower) ||
+      (employee.role || '').toLowerCase().includes(searchLower)
     );
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
-        <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center space-x-2">
-          <Plus className="h-4 w-4" />
-          <span>Add Employee</span>
-        </button>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Employee Management</h1>
+            <p className="text-blue-100">Manage your team members and staff (Admin users are managed separately)</p>
+          </div>
+          <button onClick={() => setShowAddModal(true)} className="btn-primary bg-white/20 hover:bg-white/30 border border-white/30">
+            <Plus className="h-5 w-5" />
+            Add Employee
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -317,9 +335,9 @@ const Employees = () => {
             <div key={employee._id} className="card hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900">{employee.name}</h3>
-                  <p className="text-gray-600">{employee.role}</p>
-                  <p className="text-sm text-gray-500">{employee.department}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{employee.name || 'Unknown'}</h3>
+                  <p className="text-gray-600">{employee.role || 'No Role'}</p>
+                  <p className="text-sm text-gray-500">{employee.department || 'No Department'}</p>
                   {employee.phone && (
                     <div className="flex items-center text-sm text-gray-500 mt-1">
                       <Phone className="h-3 w-3 mr-1" />
@@ -401,10 +419,10 @@ const Employees = () => {
               <div className="card">
                 <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                 <div className="space-y-3">
-                  <div><label className="text-sm font-medium text-gray-600">Name</label><p className="text-gray-900">{selectedEmployee.name}</p></div>
-                  <div><label className="text-sm font-medium text-gray-600">Email</label><p className="text-gray-900">{selectedEmployee.email}</p></div>
-                  <div><label className="text-sm font-medium text-gray-600">Role</label><p className="text-gray-900">{selectedEmployee.role}</p></div>
-                  <div><label className="text-sm font-medium text-gray-600">Department</label><p className="text-gray-900">{selectedEmployee.department}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Name</label><p className="text-gray-900">{selectedEmployee.name || 'N/A'}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Email</label><p className="text-gray-900">{selectedEmployee.email || 'N/A'}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Role</label><p className="text-gray-900">{selectedEmployee.role || 'N/A'}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Department</label><p className="text-gray-900">{selectedEmployee.department || 'N/A'}</p></div>
                 </div>
               </div>
               <div className="card">
@@ -412,8 +430,8 @@ const Employees = () => {
                   <DollarSign className="h-5 w-5 mr-2" />Salary Details
                 </h3>
                 <div className="space-y-3">
-                  <div><label className="text-sm font-medium text-gray-600">Annual Salary</label><p className="text-2xl font-bold text-green-600">₹{selectedEmployee.salary.toLocaleString()}</p></div>
-                  <div><label className="text-sm font-medium text-gray-600">Monthly Salary</label><p className="text-gray-900">₹{(selectedEmployee.salary / 12).toLocaleString()}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Annual Salary</label><p className="text-2xl font-bold text-green-600">₹{(selectedEmployee.salary?.total || selectedEmployee.salary || 0).toLocaleString()}</p></div>
+                  <div><label className="text-sm font-medium text-gray-600">Monthly Salary</label><p className="text-gray-900">₹{((selectedEmployee.salary?.total || selectedEmployee.salary || 0) / 12).toLocaleString()}</p></div>
                 </div>
               </div>
             </div>
@@ -425,7 +443,10 @@ const Employees = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Add New Employee</h2>
+              <div>
+                <h2 className="text-2xl font-bold">Add New Employee</h2>
+                <p className="text-sm text-gray-600 mt-1">Register a new team member (not for admin users)</p>
+              </div>
               <button onClick={() => {
                 setShowAddModal(false);
                 resetForm();
@@ -492,13 +513,24 @@ const Employees = () => {
                       className="input-field" 
                       required
                     >
-                      <option value="">Select Role</option>
-                      <option value="super_admin">Super Admin</option>
-                      <option value="admin">Admin</option>
+                      <option value="">Select Employee Role</option>
                       <option value="sub_admin">Sub Admin</option>
+                      <option value="manager">Manager</option>
+                      <option value="team_lead">Team Lead</option>
+                      <option value="senior_developer">Senior Developer</option>
                       <option value="developer">Developer</option>
+                      <option value="junior_developer">Junior Developer</option>
                       <option value="designer">Designer</option>
+                      <option value="ui_ux_designer">UI/UX Designer</option>
                       <option value="tester">Tester</option>
+                      <option value="qa_engineer">QA Engineer</option>
+                      <option value="business_analyst">Business Analyst</option>
+                      <option value="project_coordinator">Project Coordinator</option>
+                      <option value="hr_executive">HR Executive</option>
+                      <option value="accountant">Accountant</option>
+                      <option value="sales_executive">Sales Executive</option>
+                      <option value="marketing_executive">Marketing Executive</option>
+                      <option value="intern">Intern</option>
                     </select>
                   </div>
                   <div>
@@ -511,11 +543,18 @@ const Employees = () => {
                       required
                     >
                       <option value="">Select Department</option>
-                      <option value="Management">Management</option>
                       <option value="Development">Development</option>
                       <option value="Design">Design</option>
-                      <option value="Testing">Testing</option>
+                      <option value="Testing">Testing & QA</option>
                       <option value="Marketing">Marketing</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Human Resources">Human Resources</option>
+                      <option value="Finance">Finance & Accounting</option>
+                      <option value="Operations">Operations</option>
+                      <option value="Business Analysis">Business Analysis</option>
+                      <option value="Project Management">Project Management</option>
+                      <option value="Customer Support">Customer Support</option>
+                      <option value="IT Support">IT Support</option>
                     </select>
                   </div>
                   <div className="md:col-span-2">
