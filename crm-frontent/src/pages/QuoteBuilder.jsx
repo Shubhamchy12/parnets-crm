@@ -9,6 +9,7 @@ import { clientService } from '../services/clientService';
 import { projectService } from '../services/projectService';
 import PageHeader from '../components/common/PageHeader';
 import { Plus, Trash2 } from 'lucide-react';
+import { formatINR } from '../utils/currency';
 
 const QuoteBuilder = () => {
   const navigate = useNavigate();
@@ -204,25 +205,25 @@ const QuoteBuilder = () => {
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-slate-600">
-                  <span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span>
+                  <span>Subtotal</span><span>{formatINR(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>GST (18%)</span><span>₹{tax.toFixed(0)}</span>
+                  <span>GST (18%)</span><span>{formatINR(tax)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-slate-900 text-base border-t border-slate-100 pt-2 mt-2">
-                  <span>Total</span><span>₹{total.toFixed(0)}</span>
+                  <span>Total</span><span>{formatINR(total)}</span>
                 </div>
                 {budget > 0 && (
                   <>
                     <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
                       <div className="flex justify-between text-slate-600">
-                        <span>Budget</span><span>₹{budget.toLocaleString()}</span>
+                        <span>Budget</span><span>{formatINR(budget)}</span>
                       </div>
                       <div className="flex justify-between text-green-600">
-                        <span>Paid</span><span>₹{paidAmount.toLocaleString()}</span>
+                        <span>Paid</span><span>{formatINR(paidAmount)}</span>
                       </div>
                       <div className="flex justify-between text-orange-600 font-semibold">
-                        <span>Remaining</span><span>₹{Math.max(0, remainingAmount).toLocaleString()}</span>
+                        <span>Remaining</span><span>{formatINR(Math.max(0, remainingAmount))}</span>
                       </div>
                     </div>
                   </>

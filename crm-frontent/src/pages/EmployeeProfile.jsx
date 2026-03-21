@@ -6,6 +6,7 @@ import StatusBadge from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import LoadingSkeleton from '../components/common/LoadingSkeleton';
 import { Edit, FileText, Camera, Mail, Phone, MapPin, Calendar, Briefcase } from 'lucide-react';
+import { formatINR } from '../utils/currency';
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
@@ -70,7 +71,7 @@ const EmployeeProfile = () => {
               : data.address
           } />
           <InfoRow icon={Calendar} label="Joining Date" value={data.joiningDate ? new Date(data.joiningDate).toLocaleDateString() : null} />
-          <InfoRow icon={Briefcase} label="Salary" value={data.salary ? `₹${data.salary.toLocaleString()}` : null} />
+          <InfoRow icon={Briefcase} label="Salary" value={data.salary ? formatINR(data.salary) : null} />
         </div>
       </div>
     </div>

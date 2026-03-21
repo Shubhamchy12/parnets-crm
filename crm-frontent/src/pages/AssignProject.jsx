@@ -4,12 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { assignmentService } from '../services/assignmentService';
 import { projectService } from '../services/projectService';
 import { employeeService } from '../services/employeeService';
+import { invoiceService } from '../services/invoiceService';
 import PageHeader from '../components/common/PageHeader';
 import Avatar from '../components/common/Avatar';
 import StatusBadge from '../components/common/StatusBadge';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
-import { GitBranch, Plus, X, ExternalLink } from 'lucide-react';
+import { GitBranch, Plus, X, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 const AssignProject = () => {
@@ -29,6 +30,16 @@ const AssignProject = () => {
     queryFn: () => employeeService.getAll({ limit: 200 }).then(r => r.data?.data?.employees || []),
     staleTime: 30000,
   });
+
+  // Fetch invoices for selected project to check payment status
+  const { data: projectInvoices = [] } = useQuery({
+    queryKey: ['project-invoices', form.projectId],
+    queryFn: () => invoiceService.getAll({ project: form.projectId, limit: 50 }).then(r => r.data?.data?.invoices || []),
+    enabled: !!form.projectId,
+  });
+
+  const paymentReceived = projectInvoices.some(inv => inv.status === 'paid' || inv.status === 'partial');
+  const hasInvoice = projectInvoices.length > 0;
 
   const { data: assignments, refetch } = useQuery({
     queryKey: ['all-assignments'],
@@ -94,9 +105,39 @@ const AssignProject = () => {
               className="modal-input" placeholder="Any message for the employee..." />
           </div>
         </div>
+
+        {/* Payment status banner */}
+        {form.projectId && (
+          <div className={`mt-4 flex items-start gap-3 p-4 rounded-xl border text-sm ${
+            paymentReceived
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            {paymentReceived
+              ? <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              : <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            }
+            <div>
+              {paymentReceived ? (
+                <p className="font-medium">Payment received — project can be assigned.</p>
+              ) : !hasInvoice ? (
+                <>
+                  <p className="font-semibold">No invoice found for this project.</p>
+                  <p className="text-xs mt-0.5 opacity-80">Create an invoice and record a payment before assigning employees.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Payment has not been received yet.</p>
+                  <p className="text-xs mt-0.5 opacity-80">The invoice exists but no payment has been recorded. Please collect payment first.</p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4">
-          <button onClick={handleAssign} disabled={assignMut.isPending}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+          <button onClick={handleAssign} disabled={assignMut.isPending || (!!form.projectId && !paymentReceived)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             <Plus className="w-4 h-4" />
             {assignMut.isPending ? 'Assigning...' : 'Assign Employee'}
           </button>

@@ -38,9 +38,6 @@ import AssignProject from './pages/AssignProject';
 import MyProjects from './pages/MyProjects';
 import Tasks from './pages/Tasks';
 import Timelog from './pages/Timelog';
-import Quotes from './pages/Quotes';
-import QuoteBuilder from './pages/QuoteBuilder';
-import QuoteDetail from './pages/QuoteDetail';
 import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
 import InvoiceBuilder from './pages/InvoiceBuilder';
@@ -49,15 +46,18 @@ import Tickets from './pages/Tickets';
 import TicketDetail from './pages/TicketDetail';
 import Chat from './pages/Chat';
 import Reports from './pages/Reports';
-import Documents from './pages/Documents';
 import Settings from './pages/Settings';
 
 import ActivityLogs from './pages/ActivityLogs';
-import Payments from './pages/Payments';
 import Procurement from './pages/Procurement';
 import AMC from './pages/AMC';
 import Accounting from './pages/Accounting';
 import UserManagement from './pages/UserManagement';
+import Departments from './pages/Departments';
+import Services from './pages/Services';
+import Quotations from './pages/Quotations';
+import QuotationBuilder from './pages/QuotationBuilder';
+import QuotationDetail from './pages/QuotationDetail';
 
 import './index.css';
 
@@ -171,9 +171,6 @@ function App() {
             <Route path="leads/:id" element={<RoleRoute roles={SALES}><LeadDetail /></RoleRoute>} />
             <Route path="clients" element={<RoleRoute roles={SALES}><Clients /></RoleRoute>} />
             <Route path="clients/:id" element={<RoleRoute roles={SALES}><ClientDetail /></RoleRoute>} />
-            <Route path="quotes" element={<RoleRoute roles={SALES}><Quotes /></RoleRoute>} />
-            <Route path="quotes/new" element={<RoleRoute roles={SALES}><QuoteBuilder /></RoleRoute>} />
-            <Route path="quotes/:id" element={<RoleRoute roles={SALES}><QuoteDetail /></RoleRoute>} />
             <Route path="invoices" element={<RoleRoute roles={SALES}><Invoices /></RoleRoute>} />
             <Route path="invoices/new" element={<RoleRoute roles={SALES}><InvoiceBuilder /></RoleRoute>} />
             <Route path="invoices/:id" element={<RoleRoute roles={SALES}><InvoiceDetail /></RoleRoute>} />
@@ -181,11 +178,16 @@ function App() {
 
             {/* Admin only */}
             <Route path="reports" element={<RoleRoute roles={ADMIN}><Reports /></RoleRoute>} />
-            <Route path="payments" element={<RoleRoute roles={ADMIN}><Payments /></RoleRoute>} />
             <Route path="procurement" element={<RoleRoute roles={ADMIN}><Procurement /></RoleRoute>} />
             <Route path="amc" element={<RoleRoute roles={ADMIN}><AMC /></RoleRoute>} />
             <Route path="accounting" element={<RoleRoute roles={ADMIN}><Accounting /></RoleRoute>} />
             <Route path="user-management" element={<RoleRoute roles={ADMIN}><UserManagement /></RoleRoute>} />
+            <Route path="departments" element={<RoleRoute roles={ADMIN}><Departments /></RoleRoute>} />
+            <Route path="services" element={<RoleRoute roles={ADMIN}><Services /></RoleRoute>} />
+            <Route path="quotations" element={<RoleRoute roles={SALES}><Quotations /></RoleRoute>} />
+            <Route path="quotations/new" element={<RoleRoute roles={SALES}><QuotationBuilder /></RoleRoute>} />
+            <Route path="quotations/:id" element={<RoleRoute roles={SALES}><QuotationDetail /></RoleRoute>} />
+            <Route path="quotations/:id/edit" element={<RoleRoute roles={SALES}><QuotationBuilder /></RoleRoute>} />
             <Route path="activity-logs" element={<RoleRoute roles={['super_admin']}><ActivityLogs /></RoleRoute>} />
             <Route path="settings" element={<RoleRoute roles={ADMIN}><Settings /></RoleRoute>} />
 
@@ -193,7 +195,6 @@ function App() {
             <Route path="tickets" element={<Tickets />} />
             <Route path="tickets/:id" element={<TicketDetail />} />
             <Route path="chat" element={<Chat />} />
-            <Route path="documents" element={<Documents />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" />} />

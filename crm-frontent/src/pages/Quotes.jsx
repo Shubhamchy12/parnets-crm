@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { Plus, Send, FileText } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
 const Quotes = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ const Quotes = () => {
   const columns = [
     { key: 'quoteNumber', label: 'Quote #', render: v => <span className="font-mono text-sm font-medium text-indigo-600">{v || '—'}</span> },
     { key: 'client', label: 'Client', render: (v, row) => row.clientName || row.client?.name || '—' },
-    { key: 'total', label: 'Total', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
+    { key: 'total', label: 'Total', render: v => v ? formatINR(v) : '—' },
     { key: 'validUntil', label: 'Valid Until', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
     { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'draft'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v, row) => (

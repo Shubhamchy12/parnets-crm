@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { Plus } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
 const Invoices = () => {
   const navigate = useNavigate();
@@ -35,10 +36,10 @@ const Invoices = () => {
   const columns = [
     { key: 'invoiceNumber', label: 'Invoice #', render: v => <span className="font-mono text-sm font-medium text-indigo-600">{v || '—'}</span> },
     { key: 'client', label: 'Client', render: (v, row) => row.clientName || row.client?.name || '—' },
-    { key: 'budget', label: 'Budget', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
-    { key: 'paidAmount', label: 'Paid', render: v => <span className="text-green-600">{v ? `₹${Number(v).toLocaleString()}` : '—'}</span> },
-    { key: 'remainingAmount', label: 'Remaining', render: v => <span className="text-orange-600 font-medium">{v ? `₹${Number(v).toLocaleString()}` : '—'}</span> },
-    { key: 'total', label: 'Invoice Amt', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
+    { key: 'budget', label: 'Budget', render: v => v ? formatINR(v) : '—' },
+    { key: 'paidAmount', label: 'Paid', render: v => <span className="text-green-600">{v ? formatINR(v) : '—'}</span> },
+    { key: 'remainingAmount', label: 'Remaining', render: v => <span className="text-orange-600 font-medium">{v ? formatINR(v) : '—'}</span> },
+    { key: 'total', label: 'Invoice Amt', render: v => v ? formatINR(v) : '—' },
     { key: 'dueDate', label: 'Due Date', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
     { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'draft'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v) => (

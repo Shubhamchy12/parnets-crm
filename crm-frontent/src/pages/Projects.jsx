@@ -1,38 +1,61 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { projectService } from '../services/projectService';
 import { clientService } from '../services/clientService';
-import { employeeService } from '../services/employeeService';
+import api from '../services/api';
 import PageHeader from '../components/common/PageHeader';
 import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import toast from 'react-hot-toast';
-import { Plus, Search, FolderOpen } from 'lucide-react';
+import { Plus, Search, FolderOpen, Upload, FileText, X } from 'lucide-react';
 import { MdOutlineRemoveRedEye } from 'react-icons/md';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { format } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
-const schema = z.object({
-  name: z.string().min(2, 'Name required'),
-  client: z.string().min(1, 'Client required'),
-  projectManager: z.string().min(1, 'Project manager required'),
-  startDate: z.string().min(1, 'Start date required'),
-  endDate: z.string().min(1, 'End date required'),
-  description: z.string().optional(),
-  budget: z.coerce.number().optional(),
-  status: z.string().default('planning'),
-  projectType: z.string().default('other'),
-  priority: z.string().default('medium'),
-  technology: z.string().optional(),
-});
+const EMPTY_FORM = {
+  name: '', client: '', startDate: '', endDate: '',
+  description: '', budget: '', status: 'planning',
+  projectType: 'other', priority: 'medium',
+  technology: '', technicalSolution: '',
+};
 
-const inputCls = "modal-input";
+const SectionTitle = ({ children }) => (
+  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>{children}</p>
+);
+
+const Lbl = ({ children }) => <label className="modal-form-label">{children}</label>;
+
+const FilePicker = ({ label, file, onChange }) => {
+  const ref = useRef();
+  return (
+    <div>
+      <Lbl>{label}</Lbl>
+      <div onClick={() => ref.current?.click()}
+        className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-3 py-2.5 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-colors">
+        {file ? (
+          <>
+            <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+            <span className="text-xs text-slate-700 truncate flex-1">{file.name}</span>
+            <button type="button" onClick={e => { e.stopPropagation(); onChange(null); }} className="text-slate-400 hover:text-red-500">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <Upload className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <span className="text-xs text-slate-400">Click to upload (PDF, JPG, PNG, DOC)</span>
+          </>
+        )}
+      </div>
+      <input ref={ref} type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden"
+        onChange={e => onChange(e.target.files?.[0] || null)} />
+    </div>
+  );
+};
 
 const Projects = () => {
   const navigate = useNavigate();
@@ -40,7 +63,13 @@ const Projects = () => {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({ resolver: zodResolver(schema), defaultValues: { status: 'planning', priority: 'medium', projectType: 'other' } });
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [docs, setDocs] = useState({ agreement: null, scopeOfWork: null, otherDoc: null });
+
+  const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const setDoc = (k, f) => setDocs(p => ({ ...p, [k]: f }));
+
+  const resetForm = () => { setForm({ ...EMPTY_FORM }); setDocs({ agreement: null, scopeOfWork: null, otherDoc: null }); };
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects', search],
@@ -53,49 +82,42 @@ const Projects = () => {
     staleTime: 60000,
   });
 
-  const { data: employees } = useQuery({
-    queryKey: ['employees-dropdown'],
-    queryFn: () => employeeService.getAll({ limit: 200 }).then(r => r.data?.data?.employees || []),
-    staleTime: 60000,
-  });
-
   const createMut = useMutation({
-    mutationFn: (d) => {
-      const payload = { ...d };
-      if (payload.technology && typeof payload.technology === 'string') {
-        payload.technology = payload.technology.split(',').map(t => t.trim()).filter(Boolean);
-      }
-      return projectService.create(payload);
-    },
+    mutationFn: (fd) => api.post('/projects/create', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Project created');
-      setModal(false); reset();
+      setModal(false); resetForm();
       const id = res.data?.data?.project?._id;
       if (id) navigate(`/projects/${id}`);
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to create'),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => projectService.remove(id),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['projects'] });
-      const prev = qc.getQueryData(['projects', search]);
-      qc.setQueryData(['projects', search], (old = []) => old.filter(p => p._id !== id));
-      return { prev };
-    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['projects'] }); toast.success('Deleted'); setDeleteId(null); },
-    onError: (e, _, ctx) => { if (ctx?.prev) qc.setQueryData(['projects', search], ctx.prev); toast.error(e.response?.data?.message || 'Failed to delete'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to delete'),
   });
+
+  const handleSubmit = () => {
+    if (!form.name.trim()) return toast.error('Project name is required');
+    if (!form.client)      return toast.error('Client is required');
+    if (!form.startDate)   return toast.error('Start date is required');
+    if (!form.endDate)     return toast.error('End date is required');
+
+    const fd = new FormData();
+    Object.entries(form).forEach(([k, v]) => { if (v !== '' && v !== undefined) fd.append(k, v); });
+    Object.entries(docs).forEach(([k, f]) => { if (f) fd.append(k, f); });
+    createMut.mutate(fd);
+  };
 
   const columns = [
     { key: 'name', label: 'Project', render: v => <span className="font-semibold" style={{ color: 'var(--text-1)' }}>{v}</span> },
-    { key: 'client', label: 'Client', render: (v) => v?.name || '—' },
-    { key: 'projectManager', label: 'Manager', render: (v) => v?.name || '—' },
+    { key: 'client', label: 'Client', render: v => v?.name || '—' },
     { key: 'startDate', label: 'Start', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
     { key: 'endDate', label: 'Deadline', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
-    { key: 'budget', label: 'Budget', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
+    { key: 'budget', label: 'Budget', render: v => v?.estimated ? formatINR(v.estimated) : '—' },
     { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'planning'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v) => (
       <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
@@ -129,42 +151,34 @@ const Projects = () => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..."
             className="crm-input pl-9" />
         </div>
-        <DataTable columns={columns} data={data || []} loading={isLoading} onRowClick={row => navigate(`/projects/${row._id}`)} />
+        <DataTable columns={columns} data={data || []} loading={isLoading}
+          onRowClick={row => navigate(`/projects/${row._id}`)} />
       </div>
 
-      <Modal open={modal} onClose={() => { setModal(false); reset(); }} title="New Project" subtitle="Set up a new project" icon={FolderOpen} size="xl">
-        <form onSubmit={handleSubmit(d => createMut.mutate(d))} className="space-y-6">
+      <Modal open={modal} onClose={() => { setModal(false); resetForm(); }}
+        title="New Project" subtitle="Set up a new project" icon={FolderOpen} size="xl">
+        <div className="space-y-7">
 
+          {/* Project Details */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>Project Details</p>
+            <SectionTitle>Project Details</SectionTitle>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="modal-form-label">Project Name *</label>
-                <input {...register('name')} className={`modal-input ${errors.name ? 'modal-input-error' : ''}`} placeholder="e.g. Website Redesign" />
-                {errors.name && <p className="modal-error-text">{errors.name.message}</p>}
+                <Lbl>Project Name *</Lbl>
+                <input value={form.name} onChange={e => setField('name', e.target.value)} className="modal-input" placeholder="e.g. Website Redesign" />
               </div>
 
-              <div>
-                <label className="modal-form-label">Client *</label>
-                <select {...register('client')} className={`modal-input ${errors.client ? 'modal-input-error' : ''}`}>
+              <div className="col-span-2">
+                <Lbl>Client *</Lbl>
+                <select value={form.client} onChange={e => setField('client', e.target.value)} className="modal-input">
                   <option value="">Select client...</option>
-                  {(clients || []).map(c => <option key={c._id} value={c._id}>{c.name} — {c.company || c.email}</option>)}
+                  {(clients || []).map(c => <option key={c._id} value={c._id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>)}
                 </select>
-                {errors.client && <p className="modal-error-text">{errors.client.message}</p>}
               </div>
 
               <div>
-                <label className="modal-form-label">Project Manager *</label>
-                <select {...register('projectManager')} className={`modal-input ${errors.projectManager ? 'modal-input-error' : ''}`}>
-                  <option value="">Select manager...</option>
-                  {(employees || []).map(e => <option key={e._id} value={e._id}>{e.name} — {e.designation || e.role}</option>)}
-                </select>
-                {errors.projectManager && <p className="modal-error-text">{errors.projectManager.message}</p>}
-              </div>
-
-              <div>
-                <label className="modal-form-label">Project Type</label>
-                <select {...register('projectType')} className="modal-input">
+                <Lbl>Project Type</Lbl>
+                <select value={form.projectType} onChange={e => setField('projectType', e.target.value)} className="modal-input">
                   <option value="web_development">Web Development</option>
                   <option value="mobile_app">Mobile App</option>
                   <option value="design">Design</option>
@@ -175,8 +189,8 @@ const Projects = () => {
               </div>
 
               <div>
-                <label className="modal-form-label">Priority</label>
-                <select {...register('priority')} className="modal-input">
+                <Lbl>Priority</Lbl>
+                <select value={form.priority} onChange={e => setField('priority', e.target.value)} className="modal-input">
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -185,8 +199,8 @@ const Projects = () => {
               </div>
 
               <div>
-                <label className="modal-form-label">Status</label>
-                <select {...register('status')} className="modal-input">
+                <Lbl>Status</Lbl>
+                <select value={form.status} onChange={e => setField('status', e.target.value)} className="modal-input">
                   <option value="planning">Planning</option>
                   <option value="in_progress">In Progress</option>
                   <option value="on_hold">On Hold</option>
@@ -196,44 +210,63 @@ const Projects = () => {
               </div>
 
               <div>
-                <label className="modal-form-label">Start Date *</label>
-                <input {...register('startDate')} type="date" className={`modal-input ${errors.startDate ? 'modal-input-error' : ''}`} />
-                {errors.startDate && <p className="modal-error-text">{errors.startDate.message}</p>}
+                <Lbl>Estimated Budget (₹)</Lbl>
+                <input type="number" value={form.budget} onChange={e => setField('budget', e.target.value)} className="modal-input" placeholder="0" />
               </div>
 
               <div>
-                <label className="modal-form-label">End Date (Deadline) *</label>
-                <input {...register('endDate')} type="date" className={`modal-input ${errors.endDate ? 'modal-input-error' : ''}`} />
-                {errors.endDate && <p className="modal-error-text">{errors.endDate.message}</p>}
+                <Lbl>Start Date *</Lbl>
+                <input type="date" value={form.startDate} onChange={e => setField('startDate', e.target.value)} className="modal-input" />
               </div>
 
               <div>
-                <label className="modal-form-label">Estimated Budget (₹)</label>
-                <input {...register('budget')} type="number" className="modal-input" placeholder="0" />
-              </div>
-
-              <div>
-                <label className="modal-form-label">Technology Stack</label>
-                <input {...register('technology')} className="modal-input" placeholder="React, Node.js, MongoDB..." />
+                <Lbl>End Date (Deadline) *</Lbl>
+                <input type="date" value={form.endDate} onChange={e => setField('endDate', e.target.value)} className="modal-input" />
               </div>
 
               <div className="col-span-2">
-                <label className="modal-form-label">Description</label>
-                <textarea {...register('description')} rows={2} className="modal-input" style={{ resize: 'none' }} placeholder="Brief project description..." />
+                <Lbl>Technology Stack</Lbl>
+                <input value={form.technology} onChange={e => setField('technology', e.target.value)} className="modal-input" placeholder="React, Node.js, MongoDB (comma separated)" />
+              </div>
+
+              <div className="col-span-2">
+                <Lbl>Description</Lbl>
+                <textarea value={form.description} onChange={e => setField('description', e.target.value)}
+                  rows={2} className="modal-input" style={{ resize: 'none' }} placeholder="Brief project description..." />
               </div>
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={createMut.isPending} className="modal-btn-primary">
+          {/* Technical Solution */}
+          <div>
+            <SectionTitle>Technical Solution</SectionTitle>
+            <textarea value={form.technicalSolution} onChange={e => setField('technicalSolution', e.target.value)}
+              rows={4} className="modal-input w-full" style={{ resize: 'vertical' }}
+              placeholder="Describe the technical approach, architecture, or solution for this project..." />
+          </div>
+
+          {/* Document Uploads */}
+          <div>
+            <SectionTitle>Document Uploads</SectionTitle>
+            <p className="text-xs text-slate-400 mb-4">PDF, JPG, PNG or DOC — max 20 MB each</p>
+            <div className="grid grid-cols-1 gap-4">
+              <FilePicker label="Agreement Document" file={docs.agreement} onChange={f => setDoc('agreement', f)} />
+              <FilePicker label="Scope of Work Document" file={docs.scopeOfWork} onChange={f => setDoc('scopeOfWork', f)} />
+              <FilePicker label="Other Supporting Document (optional)" file={docs.otherDoc} onChange={f => setDoc('otherDoc', f)} />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleSubmit} disabled={createMut.isPending} className="modal-btn-primary disabled:opacity-50">
               {createMut.isPending ? 'Creating...' : 'Create Project'}
             </button>
-            <button type="button" onClick={() => { setModal(false); reset(); }} className="modal-btn-secondary">Cancel</button>
+            <button onClick={() => { setModal(false); resetForm(); }} className="modal-btn-secondary">Cancel</button>
           </div>
-        </form>
+        </div>
       </Modal>
 
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={() => deleteMut.mutate(deleteId)} loading={deleteMut.isPending} title="Delete Project?" />
+      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteMut.mutate(deleteId)} loading={deleteMut.isPending} title="Delete Project?" />
     </div>
   );
 };

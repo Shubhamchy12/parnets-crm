@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { formatINR } from '../utils/currency';
 
 const Payments = () => {
   const [payments, setPayments] = useState([]);
@@ -378,7 +379,7 @@ const Payments = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Amount</p>
-              <p className="text-2xl font-bold text-blue-600">₹{totalAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-blue-600">{formatINR(totalAmount)}</p>
             </div>
             <DollarSign className="h-8 w-8 text-blue-500" />
           </div>
@@ -388,7 +389,7 @@ const Payments = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Paid</p>
-              <p className="text-2xl font-bold text-green-600">₹{paidAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-600">{formatINR(paidAmount)}</p>
             </div>
             <CheckCircle className="h-8 w-8 text-green-500" />
           </div>
@@ -398,7 +399,7 @@ const Payments = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Pending</p>
-              <p className="text-2xl font-bold text-yellow-600">₹{pendingAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-yellow-600">{formatINR(pendingAmount)}</p>
             </div>
             <Clock className="h-8 w-8 text-yellow-500" />
           </div>
@@ -408,7 +409,7 @@ const Payments = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Overdue</p>
-              <p className="text-2xl font-bold text-red-600">₹{overdueAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-600">{formatINR(overdueAmount)}</p>
             </div>
             <XCircle className="h-8 w-8 text-red-500" />
           </div>
@@ -505,7 +506,7 @@ const Payments = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          ₹{payment.amount.toLocaleString()}
+                          {formatINR(payment.amount)}
                         </div>
                         <div className="text-sm text-gray-500">
                           {payment.paymentType === 'installment' ? (
@@ -644,7 +645,7 @@ const Payments = () => {
                         .filter(project => project.client?._id === formData.clientId)
                         .map(project => (
                           <option key={project._id} value={project._id}>
-                            {project.name} - ₹{project.budget?.estimated?.toLocaleString() || 0}
+                            {project.name} - {formatINR(project.budget?.estimated || 0)}
                           </option>
                         ))}
                     </select>
@@ -765,9 +766,9 @@ const Payments = () => {
                   <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                     <h4 className="text-sm font-medium text-blue-900 mb-2">Installment Summary</h4>
                     <div className="text-sm text-blue-800">
-                      <p>Total Project Amount: ₹{parseFloat(formData.amount || 0).toLocaleString()}</p>
-                      <p>Installment {formData.installmentDetails.currentInstallment} of {formData.installmentDetails.totalInstallments}: ₹{parseFloat(formData.installmentDetails.installmentAmount || 0).toLocaleString()}</p>
-                      <p>Remaining after this payment: ₹{parseFloat(formData.installmentDetails.remainingAmount || 0).toLocaleString()}</p>
+                      <p>Total Project Amount: {formatINR(parseFloat(formData.amount || 0))}</p>
+                      <p>Installment {formData.installmentDetails.currentInstallment} of {formData.installmentDetails.totalInstallments}: {formatINR(parseFloat(formData.installmentDetails.installmentAmount || 0))}</p>
+                      <p>Remaining after this payment: {formatINR(parseFloat(formData.installmentDetails.remainingAmount || 0))}</p>
                     </div>
                   </div>
                 </div>

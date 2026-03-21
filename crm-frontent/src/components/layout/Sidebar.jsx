@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  LayoutDashboard, Users, FolderOpen, FileText,
-  Settings, UserCheck, Activity, Calendar, DollarSign,
+  LayoutDashboard, Users, FolderOpen,
+  Settings, UserCheck, Activity, Calendar,
   Target, ClipboardList, FileSignature, BarChart2,
-  HardDrive, UserCog, Building2, PanelLeftClose, PanelLeftOpen,
+  UserCog, Building2, PanelLeftClose, PanelLeftOpen,
   ChevronDown, UserPlus, Briefcase, GitBranch, AlarmClock, UserSquare2,
-  Receipt, ShoppingCart, CreditCard
+  Receipt, ShoppingCart, CreditCard, Layers, Puzzle, ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { toggleSidebar } from '../../store/slices/uiSlice';
@@ -30,11 +30,9 @@ const menuGroups = [
     items: [
       { name: 'Employee Registration', icon: UserPlus,   path: '/employees/new',   roles: ADMIN },
       { name: 'Employee Data',         icon: UserCheck,  path: '/employees',       roles: ADMIN },
-      { name: 'Attendance',            icon: Calendar,   path: '/attendance',      roles: ALL_STAFF },
+      { name: 'Departments',           icon: Layers,        path: '/departments',  roles: ADMIN },      { name: 'Attendance',            icon: Calendar,   path: '/attendance',      roles: ALL_STAFF },
       { name: 'Leaves',                icon: AlarmClock, path: '/leaves',          roles: ALL_STAFF },
       { name: 'Leave Approvals',       icon: UserSquare2,path: '/leaves/team',     roles: ADMIN },
-      { name: 'Salary',                icon: DollarSign, path: '/payments',        roles: ADMIN },
-      { name: 'Documents',             icon: HardDrive,  path: '/documents',       roles: ALL_STAFF },
     ],
   },
 
@@ -42,13 +40,14 @@ const menuGroups = [
   {
     group: 'Sales',
     items: [
-      { name: 'Clients',   icon: Users,         path: '/clients',   roles: SALES },
-      { name: 'Projects',  icon: FolderOpen,    path: '/projects',  roles: SALES },
-      { name: 'My Projects', icon: Briefcase,   path: '/my-projects', roles: ['employee'] },
-      { name: 'Leads',     icon: Target,        path: '/leads',     roles: SALES },
-      { name: 'Quotes',    icon: FileText,      path: '/quotes',    roles: SALES },
-      { name: 'Invoices',  icon: CreditCard,    path: '/invoices',  roles: SALES },
-      { name: 'Contracts', icon: FileSignature, path: '/contracts', roles: SALES },
+      { name: 'Clients',   icon: Users,         path: '/clients',      roles: SALES },
+      { name: 'Projects',  icon: FolderOpen,    path: '/projects',     roles: SALES },
+      { name: 'Services / Add-ons', icon: Puzzle, path: '/services',    roles: ADMIN },
+      { name: 'My Projects', icon: Briefcase,   path: '/my-projects',  roles: ['employee'] },
+      { name: 'Leads',     icon: Target,        path: '/leads',        roles: SALES },
+      { name: 'Quotations',icon: ClipboardCheck,path: '/quotations',   roles: SALES },
+      { name: 'Invoices',  icon: CreditCard,    path: '/invoices',     roles: SALES },
+      { name: 'Contracts', icon: FileSignature, path: '/contracts',    roles: SALES },
     ],
   },
 

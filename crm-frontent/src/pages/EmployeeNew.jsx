@@ -2,24 +2,30 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useRef, useState, useEffect } from 'react';
-import { employeeService } from '../services/employeeService';
+import api from '../services/api';
 import PageHeader from '../components/common/PageHeader';
-import { Camera, CheckCircle, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Camera, CheckCircle, RefreshCw, Eye, EyeOff, Upload, X, FileText } from 'lucide-react';
 
 const schema = z.object({
-  name: z.string().min(2, 'Name required'),
-  email: z.string().email('Valid email required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  phone: z.string().optional(),
-  department: z.string().min(1, 'Department required'),
+  name:        z.string().min(2, 'Name required'),
+  email:       z.string().email('Valid email required'),
+  password:    z.string().min(6, 'Password must be at least 6 characters'),
+  phone:       z.string().optional(),
+  department:  z.string().min(1, 'Department required'),
   designation: z.string().min(1, 'Designation required'),
-  role: z.string().min(1, 'Role required'),
-  employeeId: z.string().optional(),
+  role:        z.string().min(1, 'Role required'),
+  employeeId:  z.string().optional(),
   joiningDate: z.string().optional(),
-  salary: z.coerce.number().optional(),
+  salary:      z.coerce.number().optional(),
+  // bank details
+  bankName:          z.string().optional(),
+  accountHolderName: z.string().optional(),
+  accountNumber:     z.string().optional(),
+  ifscCode:          z.string().optional(),
+  branchName:        z.string().optional(),
 });
 
 const Field = ({ label, error, children }) => (
@@ -29,6 +35,47 @@ const Field = ({ label, error, children }) => (
     {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
   </div>
 );
+
+// Single file picker with preview name
+const FilePicker = ({ label, fieldKey, files, onChange }) => {
+  const inputRef = useRef();
+  const file = files[fieldKey];
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-600 mb-1.5">{label}</label>
+      <div
+        className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors"
+        onClick={() => inputRef.current?.click()}
+      >
+        {file ? (
+          <>
+            <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+            <span className="text-xs text-slate-700 truncate flex-1">{file.name}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(fieldKey, null); }}
+              className="text-slate-400 hover:text-red-500"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <Upload className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <span className="text-xs text-slate-400">Click to upload (PDF, JPG, PNG, DOC)</span>
+          </>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+        className="hidden"
+        onChange={(e) => onChange(fieldKey, e.target.files?.[0] || null)}
+      />
+    </div>
+  );
+};
 
 const EmployeeNew = () => {
   const navigate = useNavigate();
@@ -40,8 +87,23 @@ const EmployeeNew = () => {
   const [streaming, setStreaming] = useState(false);
   const [facePhoto, setFacePhoto] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  // doc files: { aadhaar: File|null, pan: File|null, ... }
+  const [docFiles, setDocFiles] = useState({
+    aadhaar: null, pan: null, education: null,
+    experience: null, salarySlip1: null, salarySlip2: null, salarySlip3: null,
+  });
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+  const setFile = (key, file) => setDocFiles(prev => ({ ...prev, [key]: file }));
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: async () => {
+      const res = await api.get('/departments');
+      return res.data.data.departments;
+    },
+  });
+
+  const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { role: 'employee' },
   });
@@ -77,8 +139,7 @@ const EmployeeNew = () => {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    setFacePhoto(dataUrl);
+    setFacePhoto(canvas.toDataURL('image/jpeg', 0.8));
     stopCamera();
     toast.success('Photo captured');
   };
@@ -87,11 +148,13 @@ const EmployeeNew = () => {
   useEffect(() => () => stopCamera(), []);
 
   const mut = useMutation({
-    mutationFn: (data) => employeeService.create(data),
+    mutationFn: (formData) => api.post('/employees/register', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
     onSuccess: (res) => {
       qc.invalidateQueries(['employees']);
       toast.success('Employee created successfully');
-      const id = res.data?.data?.employee?._id || res.data?.employee?._id;
+      const id = res.data?.data?.employee?._id;
       navigate(id ? `/employees/${id}` : '/employees');
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to create'),
@@ -102,7 +165,13 @@ const EmployeeNew = () => {
       toast.error('Please capture a face photo for attendance');
       return;
     }
-    mut.mutate({ ...data, facePhoto });
+    const fd = new FormData();
+    // text fields
+    Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== '') fd.append(k, v); });
+    fd.append('facePhoto', facePhoto);
+    // file fields
+    Object.entries(docFiles).forEach(([k, f]) => { if (f) fd.append(k, f); });
+    mut.mutate(fd);
   };
 
   return (
@@ -119,7 +188,7 @@ const EmployeeNew = () => {
       <div className="max-w-2xl mx-auto pb-8">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
-          {/* Camera - centered circle */}
+          {/* ── Face Photo ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 flex flex-col items-center gap-4">
             <p className="text-sm font-semibold text-slate-700">Face Photo for Attendance</p>
             <div className="w-40 h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-indigo-100 shadow-inner flex items-center justify-center">
@@ -137,37 +206,26 @@ const EmployeeNew = () => {
                 <div className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
                   <CheckCircle className="w-4 h-4" /> Photo captured
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setFacePhoto(null); startCamera(); }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
-                >
+                <button type="button" onClick={() => { setFacePhoto(null); startCamera(); }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors">
                   <RefreshCw className="w-3.5 h-3.5" /> Retake
                 </button>
               </div>
             ) : streaming ? (
-              <button
-                type="button"
-                onClick={capturePhoto}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium"
-              >
+              <button type="button" onClick={capturePhoto}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium">
                 <Camera className="w-4 h-4" /> Capture Photo
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={startCamera}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium"
-              >
+              <button type="button" onClick={startCamera}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium">
                 <Camera className="w-4 h-4" /> Open Camera
               </button>
             )}
-            <p className="text-xs text-slate-400 text-center">
-              Used to verify identity during attendance check-in/out
-            </p>
+            <p className="text-xs text-slate-400 text-center">Used to verify identity during attendance check-in/out</p>
           </div>
 
-          {/* Employee Details */}
+          {/* ── Employee Details ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Employee Details</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -186,8 +244,8 @@ const EmployeeNew = () => {
               <Field label="Department *" error={errors.department?.message}>
                 <select {...register('department')} className="modal-input">
                   <option value="">Select department</option>
-                  {['Engineering', 'Sales', 'HR', 'Finance', 'Support', 'Operations', 'Marketing'].map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                  {departments.map((d) => (
+                    <option key={d._id} value={d.name}>{d.name}</option>
                   ))}
                 </select>
               </Field>
@@ -206,7 +264,7 @@ const EmployeeNew = () => {
             </div>
           </div>
 
-          {/* Login Credentials */}
+          {/* ── Login Credentials ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Login Credentials</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -215,17 +273,10 @@ const EmployeeNew = () => {
               </Field>
               <Field label="Password *" error={errors.password?.message}>
                 <div className="relative">
-                  <input
-                    {...register('password')}
-                    type={showPassword ? 'text' : 'password'}
-                    className="modal-input pr-10"
-                    placeholder="Min 6 characters"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((p) => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
+                  <input {...register('password')} type={showPassword ? 'text' : 'password'}
+                    className="modal-input pr-10" placeholder="Min 6 characters" />
+                  <button type="button" onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -233,20 +284,56 @@ const EmployeeNew = () => {
             </div>
           </div>
 
-          {/* Actions */}
+          {/* ── Bank Details ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Bank Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field label="Bank Name" error={errors.bankName?.message}>
+                <input {...register('bankName')} className="modal-input" placeholder="State Bank of India" />
+              </Field>
+              <Field label="Account Holder Name" error={errors.accountHolderName?.message}>
+                <input {...register('accountHolderName')} className="modal-input" placeholder="John Doe" />
+              </Field>
+              <Field label="Account Number" error={errors.accountNumber?.message}>
+                <input {...register('accountNumber')} className="modal-input" placeholder="1234567890" />
+              </Field>
+              <Field label="IFSC Code" error={errors.ifscCode?.message}>
+                <input {...register('ifscCode')} className="modal-input" placeholder="SBIN0001234" />
+              </Field>
+              <Field label="Branch Name" error={errors.branchName?.message}>
+                <input {...register('branchName')} className="modal-input" placeholder="MG Road Branch" />
+              </Field>
+            </div>
+          </div>
+
+          {/* ── Document Upload ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Document Upload</h3>
+            <p className="text-xs text-slate-400 mb-5">PDF, JPG, PNG or DOC — max 10 MB each</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <FilePicker label="Aadhar Card" fieldKey="aadhaar" files={docFiles} onChange={setFile} />
+              <FilePicker label="PAN Card" fieldKey="pan" files={docFiles} onChange={setFile} />
+              <FilePicker label="Educational Certificates" fieldKey="education" files={docFiles} onChange={setFile} />
+              <FilePicker label="Experience Certificate" fieldKey="experience" files={docFiles} onChange={setFile} />
+            </div>
+            <div className="mt-4">
+              <p className="text-xs font-medium text-slate-500 mb-3">Salary Slips (Last 3 Months)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FilePicker label="Month 1" fieldKey="salarySlip1" files={docFiles} onChange={setFile} />
+                <FilePicker label="Month 2" fieldKey="salarySlip2" files={docFiles} onChange={setFile} />
+                <FilePicker label="Month 3" fieldKey="salarySlip3" files={docFiles} onChange={setFile} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Actions ── */}
           <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={isSubmitting || mut.isPending}
-              className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
-            >
+            <button type="submit" disabled={mut.isPending}
+              className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50">
               {mut.isPending ? 'Creating...' : 'Create Employee'}
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/employees')}
-              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition-colors"
-            >
+            <button type="button" onClick={() => navigate('/employees')}
+              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition-colors">
               Cancel
             </button>
           </div>

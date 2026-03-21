@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { attendanceService } from '../services/attendanceService';
 import { employeeService } from '../services/employeeService';
 import PageHeader from '../components/common/PageHeader';
@@ -8,7 +9,7 @@ import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import { format } from 'date-fns';
-import { Users, Clock, CheckCircle, XCircle, Search } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Search, Download } from 'lucide-react';
 
 const AttendanceAdmin = () => {
   const navigate = useNavigate();
@@ -95,11 +96,39 @@ const AttendanceAdmin = () => {
     },
   ];
 
+  const exportToExcel = () => {
+    const rows = records.map(r => ({
+      'Employee Name':  r.employee?.name || r.employeeName || '—',
+      'Department':     r.employee?.department || '—',
+      'Date':           r.date ? format(new Date(r.date), 'dd/MM/yyyy') : '—',
+      'Check In':       r.checkIn?.time  ? format(new Date(r.checkIn.time),  'hh:mm a') : '—',
+      'Check Out':      r.checkOut?.time ? format(new Date(r.checkOut.time), 'hh:mm a') : '—',
+      'Total Hours':    r.totalHours ? `${r.totalHours}h` : '—',
+      'Status':         r.status || '—',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Column widths
+    ws['!cols'] = [22, 18, 14, 12, 12, 14, 12].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+    XLSX.writeFile(wb, `attendance_${date}.xlsx`);
+  };
+
   return (
     <div>
       <PageHeader
         title="Attendance Overview"
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Attendance' }]}
+        actions={
+          <button
+            onClick={exportToExcel}
+            disabled={records.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" /> Export Excel
+          </button>
+        }
       />
 
       {/* Summary cards */}

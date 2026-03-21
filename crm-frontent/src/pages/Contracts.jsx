@@ -11,6 +11,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Plus, FileSignature } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
 const Contracts = () => {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ const Contracts = () => {
     { key: 'client', label: 'Client', render: (v, row) => row.client?.name || '—' },
     { key: 'startDate', label: 'Start', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
     { key: 'endDate', label: 'End', render: v => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
-    { key: 'value', label: 'Value', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
+    { key: 'value', label: 'Value', render: v => v ? formatINR(v) : '—' },
     { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'draft'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v) => (
       <div className="flex gap-2">

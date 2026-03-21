@@ -14,6 +14,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Plus, LayoutGrid, List, Target, Users, TrendingUp, CheckCircle, XCircle, DollarSign } from 'lucide-react';
+import { formatINR } from '../utils/currency';
 import { MdOutlineRemoveRedEye } from 'react-icons/md';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 
@@ -106,7 +107,7 @@ const Leads = () => {
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Phone' },
     { key: 'source', label: 'Source' },
-    { key: 'value', label: 'Deal Value', render: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
+    { key: 'value', label: 'Deal Value', render: v => v ? formatINR(v) : '—' },
     { key: 'stage', label: 'Stage', render: v => <StatusBadge status={v || 'new'} /> },
     {
       key: '_id', label: 'Actions', sortable: false, render: (v) => (
@@ -155,7 +156,7 @@ const Leads = () => {
         <StatsCard title="In Progress" value={inProgress} icon={TrendingUp} color="bg-orange-500" />
         <StatsCard title="Won" value={won} icon={CheckCircle} color="bg-green-500" />
         <StatsCard title="Lost" value={lost} icon={XCircle} color="bg-red-500" />
-        <StatsCard title="Pipeline" value={`₹${(pipeline / 1000).toFixed(0)}k`} icon={DollarSign} color="bg-purple-500" sub="excl. lost" />
+        <StatsCard title="Pipeline" value={`${formatINR(pipeline / 1000)}k`} icon={DollarSign} color="bg-purple-500" sub="excl. lost" />
       </div>
 
       {view === 'list' ? (
@@ -176,7 +177,7 @@ const Leads = () => {
               {item.company && <p className="text-xs mb-1.5" style={{ color: 'var(--text-3)' }}>{item.company}</p>}
               {item.value && (
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--success)' }}>
-                  ₹{Number(item.value).toLocaleString()}
+                  {formatINR(item.value)}
                 </span>
               )}
             </div>

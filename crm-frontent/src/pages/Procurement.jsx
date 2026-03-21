@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { formatINR } from '../utils/currency';
 
 const Procurement = () => {
   const [procurements, setProcurements] = useState([]);
@@ -322,7 +323,7 @@ const Procurement = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Value</p>
-              <p className="text-2xl font-bold text-blue-600">₹{totalAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-blue-600">{formatINR(totalAmount)}</p>
             </div>
             <ShoppingCart className="h-8 w-8 text-blue-500" />
           </div>
@@ -456,7 +457,7 @@ const Procurement = () => {
                       <div className="text-sm text-gray-500">Qty: {procurement.quantity}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₹{procurement.totalAmount.toLocaleString()}
+                      {formatINR(procurement.totalAmount)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -703,8 +704,8 @@ const Procurement = () => {
                     <h4 className="text-sm font-medium text-blue-900 mb-2">Pricing Summary</h4>
                     <div className="text-sm text-blue-800">
                       <p>Quantity: {formData.quantity}</p>
-                      <p>Unit Price: ₹{parseFloat(formData.unitPrice || 0).toLocaleString()}</p>
-                      <p className="font-semibold">Total Amount: ₹{parseFloat(formData.totalAmount || 0).toLocaleString()}</p>
+                      <p>Unit Price: {formatINR(parseFloat(formData.unitPrice || 0))}</p>
+                      <p className="font-semibold">Total Amount: {formatINR(parseFloat(formData.totalAmount || 0))}</p>
                     </div>
                   </div>
                 )}

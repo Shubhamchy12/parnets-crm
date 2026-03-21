@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Users, FileText, Calendar, X, Plus, Save, Upload, Download, Clock, AlertTriangle, CheckCircle2, MessageSquare } from 'lucide-react';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { format, differenceInDays } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
 const Field = ({ label, value }) => {
   const display = value === null || value === undefined ? '—'
@@ -250,7 +251,7 @@ const ProjectDetail = () => {
                 </button>
               </div>
               <Field label="Project Manager" value={data.projectManager?.name} />
-              <Field label="Budget" value={budget ? `₹${Number(budget).toLocaleString()}` : null} />
+              <Field label="Budget" value={budget ? formatINR(budget) : null} />
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-slate-400 flex-shrink-0" />
                 <div>

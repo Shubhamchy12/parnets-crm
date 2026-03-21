@@ -10,6 +10,7 @@ import { ArrowLeft } from 'lucide-react';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { MdEdit } from 'react-icons/md';
 import { format } from 'date-fns';
+import { formatINR } from '../utils/currency';
 
 const Field = ({ label, value }) => {
   const display = value === null || value === undefined
@@ -114,7 +115,7 @@ const LeadDetail = () => {
             <Field label="Email" value={data.email} />
             <Field label="Phone" value={data.phone} />
             <Field label="Source" value={data.source} />
-            <Field label="Deal Value" value={data.value ? `₹${Number(data.value).toLocaleString()}` : null} />
+            <Field label="Deal Value" value={data.value ? formatINR(data.value) : null} />
             <div>
               <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-3)' }}>Stage</p>
               <StatusBadge status={data.stage || 'new'} />

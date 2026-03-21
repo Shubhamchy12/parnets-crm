@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Users, FolderOpen, DollarSign, HeadphonesIcon, Activity, TrendingUp, Clock, Calendar, CheckSquare } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { formatINR } from '../utils/currency';
 import { employeeService } from '../services/employeeService';
 import { clientService } from '../services/clientService';
 import { projectService } from '../services/projectService';
@@ -122,7 +123,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: tickColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: tickColor }} axisLine={false} tickLine={false} />
-                <Tooltip content={<TooltipBox fmt={v => `₹${Number(v).toLocaleString()}`} />} />
+                <Tooltip content={<TooltipBox fmt={v => formatINR(v)} />} />
                 <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={2.5} fill="url(#revGrad)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>

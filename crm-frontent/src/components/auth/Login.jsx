@@ -193,10 +193,10 @@ const Login = () => {
               </p>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>R</div>
+                  style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>N</div>
                 <div>
-                  <p className="text-white text-xs font-semibold">Rahul Sharma</p>
-                  <p className="text-slate-500 text-xs">CEO, TechCorp India</p>
+                  <p className="text-white text-xs font-semibold">Naveen Tiwary</p>
+                  <p className="text-slate-500 text-xs">CEO & Founder</p>
                 </div>
               </div>
             </div>
