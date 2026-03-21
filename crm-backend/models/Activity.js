@@ -13,7 +13,7 @@ const activitySchema = new mongoose.Schema({
   },
   entity: {
     type: String,
-    enum: ['user', 'client', 'project', 'attendance', 'payment', 'invoice', 'support_ticket', 'system'],
+    enum: ['user', 'client', 'project', 'attendance', 'payment', 'invoice', 'support_ticket', 'system', 'leave', 'task', 'ticket', 'lead', 'contract', 'quote', 'timelog', 'document', 'employee'],
     required: [true, 'Entity is required']
   },
   entityId: {

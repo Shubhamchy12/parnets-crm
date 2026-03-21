@@ -8,7 +8,7 @@ dotenv.config();
 async function debugUsers() {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/crm-database');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://parnetstech13:parnets13@cluster0.svfj4.mongodb.net/crm-system?retryWrites=true&w=majority');
     console.log('✅ Connected to MongoDB');
 
     // List all users

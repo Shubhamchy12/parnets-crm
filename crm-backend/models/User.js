@@ -26,31 +26,8 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Role is required'],
     enum: {
-      values: [
-        'super_admin', 
-        'admin',
-        'sub_admin',
-        'manager',
-        'team_lead',
-        'senior_developer',
-        'developer',
-        'junior_developer',
-        'designer',
-        'ui_ux_designer',
-        'tester',
-        'qa_engineer',
-        'business_analyst',
-        'project_coordinator',
-        'hr_executive',
-        'accountant',
-        'sales_executive',
-        'marketing_executive',
-        'intern',
-        'employee', // Keep for backward compatibility
-        'sales', 
-        'client'
-      ],
-      message: 'Invalid role specified'
+      values: ['super_admin', 'admin', 'employee', 'sales'],
+      message: 'Invalid role. Must be one of: super_admin, admin, employee, sales'
     },
     default: 'employee'
   },
@@ -130,12 +107,31 @@ const userSchema = new mongoose.Schema({
   designation: String,
   salary: Number,
   joiningDate: { type: Date, default: Date.now },
+  facePhoto: { type: String, select: false }, // base64 selfie for attendance matching
   address: {
     street: String,
     city: String,
     state: String,
     zipCode: String,
     country: { type: String, default: 'India' }
+  },
+  // Structured employee documents (file paths on disk)
+  employeeDocs: {
+    aadhaar:    { filename: String, path: String, originalName: String },
+    pan:        { filename: String, path: String, originalName: String },
+    education:  { filename: String, path: String, originalName: String },
+    experience: { filename: String, path: String, originalName: String },
+    salarySlip1:{ filename: String, path: String, originalName: String },
+    salarySlip2:{ filename: String, path: String, originalName: String },
+    salarySlip3:{ filename: String, path: String, originalName: String },
+  },
+  // Bank details
+  bankDetails: {
+    bankName:          String,
+    accountHolderName: String,
+    accountNumber:     String,
+    ifscCode:          String,
+    branchName:        String,
   }
 }, {
   timestamps: true,
@@ -222,30 +218,30 @@ userSchema.methods.setDefaultPermissions = async function() {
           },
           actions: { create: true, read: true, update: true, delete: true, export: true, import: true }
         },
+        admin: {
+          modules: {
+            dashboard: true, clients: true, projects: true, employees: true,
+            attendance: true, payments: true, invoices: true, support: true,
+            reports: true, settings: true
+          },
+          actions: { create: true, read: true, update: true, delete: true, export: true, import: true }
+        },
         employee: {
           modules: {
-            dashboard: true, clients: false, projects: false, employees: false,
-            attendance: true, payments: false, invoices: false, support: false,
+            dashboard: true, clients: false, projects: true, employees: false,
+            attendance: true, payments: false, invoices: false, support: true,
             reports: false, settings: false
           },
           actions: { create: false, read: true, update: false, delete: false, export: false, import: false }
         },
         sales: {
           modules: {
-            dashboard: true, clients: true, projects: true, employees: false,
-            attendance: false, payments: false, invoices: true, support: false,
-            reports: true, settings: false
-          },
-          actions: { create: true, read: true, update: true, delete: false, export: true, import: false }
-        },
-        client: {
-          modules: {
-            dashboard: true, clients: false, projects: true, employees: false,
+            dashboard: true, clients: true, projects: true, employees: true,
             attendance: false, payments: false, invoices: true, support: true,
             reports: false, settings: false
           },
-          actions: { create: false, read: true, update: false, delete: false, export: false, import: false }
-        }
+          actions: { create: true, read: true, update: true, delete: false, export: true, import: false }
+        },
       };
 
       if (rolePermissions[this.role]) {

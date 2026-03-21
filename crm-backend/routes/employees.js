@@ -1,453 +1,262 @@
 import express from 'express';
+import mongoose from 'mongoose';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import crypto from 'crypto';
 
 const router = express.Router();
+const NON_EMPLOYEE_ROLES = ['super_admin', 'admin'];
 
-/**
- * Employee Routes
- * 
- * These routes handle employee management operations.
- * IMPORTANT: Admin users (super_admin, admin) are excluded from employee operations.
- * Admin users are managed through separate admin management interfaces.
- * 
- * Employee roles include: sub_admin, manager, team_lead, developer, designer, 
- * tester, qa_engineer, business_analyst, etc.
- */
+// ── Multer setup ──────────────────────────────────────────────────────────────
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'employee-docs');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// @route   GET /api/employees
-// @desc    Get all employees (excludes admin users)
-// @access  Private
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    cb(null, `${unique}${path.extname(file.originalname)}`);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per file
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|pdf|doc|docx/;
+    const ok = allowed.test(path.extname(file.originalname).toLowerCase()) &&
+               allowed.test(file.mimetype.split('/')[1]);
+    ok ? cb(null, true) : cb(new Error('Only images, PDFs and Word docs allowed'));
+  },
+});
+
+const docFields = upload.fields([
+  { name: 'aadhaar',    maxCount: 1 },
+  { name: 'pan',        maxCount: 1 },
+  { name: 'education',  maxCount: 1 },
+  { name: 'experience', maxCount: 1 },
+  { name: 'salarySlip1',maxCount: 1 },
+  { name: 'salarySlip2',maxCount: 1 },
+  { name: 'salarySlip3',maxCount: 1 },
+]);
+
+// GET /api/employees
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, department, role } = req.query;
-    
-    const query = {
-      // Exclude admin roles - only show actual employees
-      role: { $nin: ['super_admin', 'admin'] }
-    };
-    
+    const { search, department, role, page = 1, limit = 10 } = req.query;
+    const query = { role: { $nin: NON_EMPLOYEE_ROLES } };
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { department: { $regex: search, $options: 'i' } },
-        { designation: { $regex: search, $options: 'i' } }
-      ];
+      const e = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [{ name: { $regex: e, $options: 'i' } }, { email: { $regex: e, $options: 'i' } }, { department: { $regex: e, $options: 'i' } }, { designation: { $regex: e, $options: 'i' } }];
     }
-    
     if (department) query.department = department;
-    if (role && !['super_admin', 'admin'].includes(role)) {
-      query.role = role; // Only allow non-admin roles to be filtered
-    }
-
-    const employees = await User.find(query)
-      .select('-password')
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
-
+    if (role && !NON_EMPLOYEE_ROLES.includes(role)) query.role = role;
+    const employees = await User.find(query).select('-password').sort({ createdAt: -1 }).limit(limit * 1).skip((page - 1) * limit);
     const total = await User.countDocuments(query);
-
-    // Get department and role statistics (excluding admin roles)
-    const departments = await User.distinct('department', { role: { $nin: ['super_admin', 'admin'] } });
-    const roles = await User.distinct('role', { role: { $nin: ['super_admin', 'admin'] } });
-
-    res.json({
-      success: true,
-      data: {
-        employees,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        },
-        filters: {
-          departments: departments.filter(d => d),
-          roles
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get employees error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching employees'
-    });
+    const departments = await User.distinct('department', { role: { $nin: NON_EMPLOYEE_ROLES } });
+    const roles = await User.distinct('role', { role: { $nin: NON_EMPLOYEE_ROLES } });
+    res.json({ success: true, data: { employees, pagination: { current: +page, pages: Math.ceil(total / limit), total }, filters: { departments: departments.filter(Boolean), roles } } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   GET /api/employees/stats
-// @desc    Get employee statistics (excludes admin users)
-// @access  Private (Admin only)
+// GET /api/employees/my-face — returns logged-in user's facePhoto
+router.get('/my-face', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('+facePhoto');
+    res.json({ success: true, data: { facePhoto: user?.facePhoto || null } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/employees/stats
 router.get('/stats', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
-    // Only count actual employees, not admin users
-    const employeeQuery = { role: { $nin: ['super_admin', 'admin'] } };
-    
-    const totalEmployees = await User.countDocuments(employeeQuery);
-    const activeEmployees = await User.countDocuments({ ...employeeQuery, isActive: true });
-    
-    const employeesByDepartment = await User.aggregate([
-      { $match: employeeQuery },
-      { $group: { _id: '$department', count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
-    ]);
-
-    const employeesByRole = await User.aggregate([
-      { $match: employeeQuery },
-      { $group: { _id: '$role', count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
-    ]);
-
-    const recentJoinees = await User.find(employeeQuery)
-      .select('name email department joiningDate')
-      .sort({ joiningDate: -1 })
-      .limit(5);
-
-    const salaryStats = await User.aggregate([
-      { $match: { ...employeeQuery, salary: { $exists: true, $ne: null } } },
-      {
-        $group: {
-          _id: null,
-          avgSalary: { $avg: '$salary' },
-          minSalary: { $min: '$salary' },
-          maxSalary: { $max: '$salary' },
-          totalSalary: { $sum: '$salary' }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        totalEmployees,
-        activeEmployees,
-        inactiveEmployees: totalEmployees - activeEmployees,
-        employeesByDepartment,
-        employeesByRole,
-        recentJoinees,
-        salaryStats: salaryStats[0] || {
-          avgSalary: 0,
-          minSalary: 0,
-          maxSalary: 0,
-          totalSalary: 0
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get employee stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching employee statistics'
-    });
+    const q = { role: { $nin: NON_EMPLOYEE_ROLES } };
+    const totalEmployees = await User.countDocuments(q);
+    const activeEmployees = await User.countDocuments({ ...q, status: 'active' });
+    const byDept = await User.aggregate([{ $match: q }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+    const byRole = await User.aggregate([{ $match: q }, { $group: { _id: '$role', count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+    const salaryStats = await User.aggregate([{ $match: { ...q, salary: { $exists: true, $ne: null } } }, { $group: { _id: null, avgSalary: { $avg: '$salary' }, minSalary: { $min: '$salary' }, maxSalary: { $max: '$salary' }, totalSalary: { $sum: '$salary' } } }]);
+    res.json({ success: true, data: { totalEmployees, activeEmployees, inactiveEmployees: totalEmployees - activeEmployees, employeesByDepartment: byDept, employeesByRole: byRole, recentJoinees: [], salaryStats: salaryStats[0] || { avgSalary: 0, minSalary: 0, maxSalary: 0, totalSalary: 0 } } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   GET /api/employees/:id
-// @desc    Get employee by ID (excludes admin users)
-// @access  Private
+// GET /api/employees/:id/face — returns facePhoto for attendance matching
+router.get('/:id/face', authenticate, async (req, res) => {
+  try {
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('+facePhoto');
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, data: { facePhoto: employee.facePhoto || null } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/employees/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    // Only allow access to actual employees, not admin users
-    const employee = await User.findOne({ 
-      _id: req.params.id, 
-      role: { $nin: ['super_admin', 'admin'] } 
-    }).select('-password');
-    
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'Employee not found'
-      });
-    }
-
-    // Users can only view their own profile unless they're admin
-    if (req.user._id.toString() !== req.params.id && !['super_admin', 'admin'].includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: { employee }
-    });
-  } catch (error) {
-    console.error('Get employee error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching employee'
-    });
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('-password');
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, data: { employee } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   POST /api/employees
-// @desc    Create new employee (Admin only)
-// @access  Private (Admin only)
-router.post('/', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
+// POST /api/employees/register — multipart: employee data + documents + bank details
+router.post('/register', authenticate, authorize('super_admin', 'admin'), docFields, async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      phone,
-      role,
-      department,
-      designation,
-      salary,
-      address,
-      joiningDate,
-      documents
-    } = req.body;
+    const { name, email, password, role, department, designation, phone, salary, joiningDate, facePhoto,
+            bankName, accountHolderName, accountNumber, ifscCode, branchName } = req.body;
 
-    // Validation
-    if (!name || !email || !role || !department) {
-      return res.status(400).json({
-        success: false,
-        message: 'Name, email, role, and department are required'
-      });
+    if (!name || !email || !role || !department)
+      return res.status(400).json({ success: false, message: 'Name, email, role, department required' });
+    if (!password || password.length < 6)
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    if (NON_EMPLOYEE_ROLES.includes(role))
+      return res.status(400).json({ success: false, message: 'Cannot create admin users through employee endpoint' });
+    if (await User.findOne({ email: email.toLowerCase() }))
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+
+    // Build employeeDocs from uploaded files
+    const files = req.files || {};
+    const docKeys = ['aadhaar','pan','education','experience','salarySlip1','salarySlip2','salarySlip3'];
+    const employeeDocs = {};
+    for (const key of docKeys) {
+      if (files[key]?.[0]) {
+        const f = files[key][0];
+        employeeDocs[key] = { filename: f.filename, path: f.path, originalName: f.originalname };
+      }
     }
 
-    // Prevent creation of admin roles through employee endpoint
-    if (['super_admin', 'admin'].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot create admin users through employee endpoint. Use admin management instead.'
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid email format'
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
-    }
-
-    // Generate temporary password
-    const tempPassword = crypto.randomBytes(8).toString('hex');
-
-    // Create employee user
     const employee = new User({
-      name: name.trim(),
-      email: email.toLowerCase(),
-      password: tempPassword,
-      role,
-      department,
-      designation,
-      phone,
-      salary: typeof salary === 'object' ? salary.total : salary,
-      address,
+      name, email: email.toLowerCase(), password, role,
+      department, designation, phone,
+      salary: salary ? Number(salary) : undefined,
       joiningDate: joiningDate || new Date(),
       status: 'active',
       createdBy: req.user._id,
-      profile: {
-        department,
-        designation,
-        joiningDate: joiningDate || new Date(),
-        salary,
-        address,
-        documents
-      }
+      ...(facePhoto ? { facePhoto } : {}),
+      employeeDocs,
+      bankDetails: { bankName, accountHolderName, accountNumber, ifscCode, branchName },
     });
-
-    // Set default permissions based on role
-    employee.setDefaultPermissions();
-
     await employee.save();
-
-    // Send welcome email with temporary password (if email service is configured)
-    try {
-      // Import the email service
-      const enhancedOtpService = (await import('../services/enhancedOtpService.js')).default;
-      const emailResult = await enhancedOtpService.sendWelcomeEmail(
-        employee.email,
-        employee.name,
-        tempPassword,
-        employee.role
-      );
-
-      if (!emailResult.success) {
-        console.error('Failed to send welcome email:', emailResult.error);
-      }
-    } catch (emailError) {
-      console.error('Email service error:', emailError);
-    }
-
-    // Remove password from response
-    const employeeResponse = employee.toObject();
-    delete employeeResponse.password;
-
-    res.status(201).json({
-      success: true,
-      message: 'Employee created successfully. Welcome email sent with temporary password.',
-      data: { employee: employeeResponse }
-    });
-
-  } catch (error) {
-    console.error('Create employee error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while creating employee'
-    });
+    const safe = employee.toObject();
+    delete safe.password; delete safe.facePhoto;
+    res.status(201).json({ success: true, message: 'Employee created successfully.', data: { employee: safe } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: e.message || 'Server error' });
   }
 });
 
-// @route   PUT /api/employees/:id
-// @desc    Update employee (Admin only)
-// @access  Private (Admin only)
+// GET /api/employees/docs/:filename — serve uploaded files
+router.get('/docs/:filename', authenticate, (req, res) => {
+  const filePath = path.join(UPLOAD_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: 'File not found' });
+  res.sendFile(filePath);
+});
+
+// POST /api/employees — JSON only (legacy, no file upload)
+router.post('/', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
+  try {
+    const { name, email, password, role, department, designation, phone, salary, joiningDate, facePhoto } = req.body;
+    if (!name || !email || !role || !department) return res.status(400).json({ success: false, message: 'Name, email, role, department required' });
+    if (!password || password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    if (NON_EMPLOYEE_ROLES.includes(role)) return res.status(400).json({ success: false, message: 'Cannot create admin users through employee endpoint' });
+    if (await User.findOne({ email: email.toLowerCase() })) return res.status(400).json({ success: false, message: 'Email already exists' });
+    const employee = new User({
+      name, email: email.toLowerCase(), password, role,
+      department, designation, phone,
+      salary: salary ? Number(salary) : undefined,
+      joiningDate: joiningDate || new Date(),
+      status: 'active',
+      createdBy: req.user._id,
+      ...(facePhoto ? { facePhoto } : {})
+    });
+    await employee.save();
+    const safe = employee.toObject(); delete safe.password; delete safe.facePhoto;
+    res.status(201).json({ success: true, message: 'Employee created successfully.', data: { employee: safe } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PUT /api/employees/:id
 router.put('/:id', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      phone,
-      role,
-      department,
-      designation,
-      salary,
-      address,
-      status
-    } = req.body;
-
-    // Find employee (exclude admin users)
-    const employee = await User.findOne({ 
-      _id: req.params.id, 
-      role: { $nin: ['super_admin', 'admin'] } 
-    });
-
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'Employee not found'
-      });
-    }
-
-    // Prevent changing to admin roles
-    if (role && ['super_admin', 'admin'].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot change employee to admin role through this endpoint'
-      });
-    }
-
-    // Update fields
-    if (name) employee.name = name.trim();
-    if (email) {
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid email format'
-        });
-      }
-      
-      // Check if email is already taken by another user
-      const existingUser = await User.findOne({ 
-        email: email.toLowerCase(),
-        _id: { $ne: req.params.id }
-      });
-      
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email is already taken by another user'
-        });
-      }
-      
-      employee.email = email.toLowerCase();
-    }
-    
-    if (phone) employee.phone = phone;
-    if (role) employee.role = role;
-    if (department) employee.department = department;
-    if (designation) employee.designation = designation;
-    if (salary) employee.salary = typeof salary === 'object' ? salary.total : salary;
-    if (address) employee.address = address;
-    if (status) employee.status = status;
-
-    // Update profile
-    employee.profile = {
-      ...employee.profile,
-      department: department || employee.department,
-      designation: designation || employee.designation,
-      salary: salary || employee.profile?.salary,
-      address: address || employee.address
-    };
-
-    // Update permissions if role changed
-    if (role) {
-      employee.setDefaultPermissions();
-    }
-
-    await employee.save();
-
-    // Remove password from response
-    const employeeResponse = employee.toObject();
-    delete employeeResponse.password;
-
-    res.json({
-      success: true,
-      message: 'Employee updated successfully',
-      data: { employee: employeeResponse }
-    });
-
-  } catch (error) {
-    console.error('Update employee error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while updating employee'
-    });
+    const updates = { ...req.body }; delete updates.password;
+    const employee = await User.findOneAndUpdate({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }, updates, { new: true }).select('-password');
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, message: 'Employee updated', data: { employee } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   DELETE /api/employees/:id
-// @desc    Delete employee (Admin only)
-// @access  Private (Admin only)
+// DELETE /api/employees/:id
 router.delete('/:id', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
-    // Find employee (exclude admin users)
-    const employee = await User.findOne({ 
-      _id: req.params.id, 
-      role: { $nin: ['super_admin', 'admin'] } 
-    });
+    const employee = await User.findOneAndDelete({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } });
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, message: 'Employee deleted' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'Employee not found'
-      });
-    }
+// POST /api/employees/:id/enrol-face
+router.post('/:id/enrol-face', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
+  try {
+    const { descriptor, framesCount } = req.body;
+    if (!descriptor) return res.status(400).json({ success: false, message: 'Face descriptor required' });
+    const employee = await User.findOneAndUpdate(
+      { _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } },
+      { facePhoto: JSON.stringify(descriptor), faceEnrolledAt: new Date() },
+      { new: true }
+    ).select('-password');
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, message: 'Face enrolled successfully', data: { employee } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
-    // Soft delete - just deactivate the user
-    employee.status = 'inactive';
-    employee.isActive = false;
+// GET /api/employees/:id/documents
+router.get('/:id/documents', authenticate, async (req, res) => {
+  try {
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('name documents');
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, data: { documents: employee.documents || [] } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// POST /api/employees/:id/documents
+router.post('/:id/documents', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
+  try {
+    const { name, type, url, data, mimeType, size } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: 'Document name required' });
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } });
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    if (!employee.documents) employee.documents = [];
+    const doc = { _id: new mongoose.Types.ObjectId(), name, type: type || 'other', url: url || '', data: data || '', mimeType, size, uploadedAt: new Date() };
+    employee.documents.push(doc);
     await employee.save();
-
-    res.json({
-      success: true,
-      message: 'Employee deactivated successfully'
-    });
-
-  } catch (error) {
-    console.error('Delete employee error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while deleting employee'
-    });
+    res.status(201).json({ success: true, message: 'Document uploaded', data: { document: doc } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

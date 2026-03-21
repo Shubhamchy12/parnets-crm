@@ -1,78 +1,56 @@
 import jwtService from '../services/jwtService.js';
 import User from '../models/User.js';
 
+// In-memory user cache: userId -> { user, cachedAt }
+const userCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Role groups for convenience
+export const ADMIN_ROLES = ['super_admin', 'admin'];
+export const SALES_ROLES = ['super_admin', 'admin', 'sales'];
+export const EMPLOYEE_ROLES = ['super_admin', 'admin', 'sales', 'employee'];
+
 // Authenticate user with JWT token
 export const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Access token is required'
-      });
+      return res.status(401).json({ success: false, message: 'Access token is required' });
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    // Verify token
+    const token = authHeader.substring(7);
     const decoded = jwtService.verifyAccessToken(token);
-    
-    // Get user from database to ensure they still exist and are active
-    const user = await User.findById(decoded.userId).select('-password -otpSecret');
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
+    const userId = String(decoded.userId);
+
+    // Check in-memory cache first
+    const cached = userCache.get(userId);
+    if (cached && (Date.now() - cached.cachedAt) < CACHE_TTL) {
+      req.user = cached.user;
+      req.token = token;
+      return next();
     }
 
-    if (user.status !== 'active') {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is not active'
-      });
-    }
+    // DB lookup
+    const user = await User.findById(userId).select('-password -otpSecret').lean().catch(() => null);
 
-    if (user.isLocked) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is temporarily locked due to multiple failed login attempts'
-      });
-    }
+    if (!user) return res.status(401).json({ success: false, message: 'User not found' });
+    if (user.status !== 'active') return res.status(401).json({ success: false, message: 'Account is not active' });
+    if (user.isLocked) return res.status(401).json({ success: false, message: 'Account is temporarily locked' });
 
-    // Add user info to request
+    userCache.set(userId, { user, cachedAt: Date.now() });
     req.user = user;
     req.token = token;
-    
     next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token'
-    });
+  } catch {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 };
 
 // Authorize user based on roles
 export const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions'
-      });
-    }
-
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ success: false, message: 'Insufficient permissions' });
     next();
   };
 };
@@ -80,26 +58,9 @@ export const authorize = (...roles) => {
 // Check specific module permission
 export const checkModulePermission = (module) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    // Super admin has access to everything
-    if (req.user.role === 'super_admin') {
-      return next();
-    }
-
-    // Check if user has permission for the module
-    if (!req.user.permissions?.modules?.[module]) {
-      return res.status(403).json({
-        success: false,
-        message: `Access denied to ${module} module`
-      });
-    }
-
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (req.user.role === 'super_admin') return next();
+    if (!req.user.permissions?.modules?.[module]) return res.status(403).json({ success: false, message: `Access denied to ${module} module` });
     next();
   };
 };
@@ -107,26 +68,9 @@ export const checkModulePermission = (module) => {
 // Check specific action permission
 export const checkActionPermission = (action) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    // Super admin has access to everything
-    if (req.user.role === 'super_admin') {
-      return next();
-    }
-
-    // Check if user has permission for the action
-    if (!req.user.permissions?.actions?.[action]) {
-      return res.status(403).json({
-        success: false,
-        message: `Permission denied for ${action} action`
-      });
-    }
-
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (req.user.role === 'super_admin') return next();
+    if (!req.user.permissions?.actions?.[action]) return res.status(403).json({ success: false, message: `Permission denied for ${action} action` });
     next();
   };
 };
@@ -134,34 +78,10 @@ export const checkActionPermission = (action) => {
 // Combined module and action permission check
 export const checkPermission = (module, action) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    // Super admin has access to everything
-    if (req.user.role === 'super_admin') {
-      return next();
-    }
-
-    // Check module permission
-    if (!req.user.permissions?.modules?.[module]) {
-      return res.status(403).json({
-        success: false,
-        message: `Access denied to ${module} module`
-      });
-    }
-
-    // Check action permission
-    if (!req.user.permissions?.actions?.[action]) {
-      return res.status(403).json({
-        success: false,
-        message: `Permission denied for ${action} action`
-      });
-    }
-
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (req.user.role === 'super_admin') return next();
+    if (!req.user.permissions?.modules?.[module]) return res.status(403).json({ success: false, message: `Access denied to ${module} module` });
+    if (!req.user.permissions?.actions?.[action]) return res.status(403).json({ success: false, message: `Permission denied for ${action} action` });
     next();
   };
 };
@@ -169,70 +89,17 @@ export const checkPermission = (module, action) => {
 // Check if user owns the resource or has admin privileges
 export const checkOwnership = (resourceUserField = 'userId') => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    // Admin roles can access any resource
-    if (['super_admin', 'admin'].includes(req.user.role)) {
-      return next();
-    }
-
-    // Check if user owns the resource
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (ADMIN_ROLES.includes(req.user.role)) return next();
     const resourceUserId = req.body[resourceUserField] || req.params[resourceUserField] || req.query[resourceUserField];
-    
     if (resourceUserId && resourceUserId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - insufficient permissions'
-      });
+      return res.status(403).json({ success: false, message: 'Access denied - insufficient permissions' });
     }
-
     next();
   };
 };
 
-// Rate limiting for sensitive operations
-export const rateLimitSensitive = (maxAttempts = 5, windowMs = 15 * 60 * 1000) => {
-  const attempts = new Map();
-
-  return (req, res, next) => {
-    const key = req.ip + (req.user ? req.user._id : '');
-    const now = Date.now();
-    
-    // Clean up old entries periodically
-    if (attempts.size > 1000) {
-      for (const [k, v] of attempts.entries()) {
-        if (now > v.resetTime) {
-          attempts.delete(k);
-        }
-      }
-    }
-    
-    if (!attempts.has(key)) {
-      attempts.set(key, { count: 1, resetTime: now + windowMs });
-      return next();
-    }
-
-    const userAttempts = attempts.get(key);
-    
-    if (now > userAttempts.resetTime) {
-      attempts.set(key, { count: 1, resetTime: now + windowMs });
-      return next();
-    }
-
-    if (userAttempts.count >= maxAttempts) {
-      const remainingTime = Math.ceil((userAttempts.resetTime - now) / 1000 / 60);
-      return res.status(429).json({
-        success: false,
-        message: `Too many attempts. Please try again in ${remainingTime} minutes.`
-      });
-    }
-
-    userAttempts.count++;
-    next();
-  };
+// Clear user from cache (call after role/status changes)
+export const clearUserCache = (userId) => {
+  userCache.delete(String(userId));
 };

@@ -6,6 +6,10 @@ const projectSchema = new mongoose.Schema({
     required: [true, 'Project name is required'],
     trim: true
   },
+  scopeOfWork: {
+    type: String,
+    trim: true
+  },
   description: {
     type: String,
     trim: true
@@ -18,7 +22,6 @@ const projectSchema = new mongoose.Schema({
   projectManager: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Project manager is required']
   },
   teamMembers: [{
     user: {
@@ -67,7 +70,19 @@ const projectSchema = new mongoose.Schema({
       default: 0
     }
   },
+  projectType: {
+    type: String,
+    enum: ['web_development', 'mobile_app', 'design', 'consulting', 'maintenance', 'other'],
+    default: 'other',
+  },
   technology: [String],
+  agreements: [{
+    title: { type: String, required: true },
+    url: { type: String, required: true },
+    version: { type: Number, default: 1 },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    uploadedAt: { type: Date, default: Date.now },
+  }],
   milestones: [{
     name: {
       type: String,
@@ -99,7 +114,18 @@ const projectSchema = new mongoose.Schema({
     min: 0,
     max: 100,
     default: 0
-  }
+  },
+  // Technical solution / approach written by admin
+  technicalSolution: {
+    type: String,
+    trim: true,
+  },
+  // Uploaded project documents (disk paths)
+  projectDocs: {
+    agreement:    { filename: String, path: String, originalName: String },
+    scopeOfWork:  { filename: String, path: String, originalName: String },
+    otherDoc:     { filename: String, path: String, originalName: String },
+  },
 }, {
   timestamps: true
 });

@@ -1,294 +1,168 @@
 import express from 'express';
-import { body, validationResult } from 'express-validator';
 import Attendance from '../models/Attendance.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
+import mongoose from 'mongoose';
 
 const router = express.Router();
 
-// @route   GET /api/attendance
-// @desc    Get attendance records
-// @access  Private
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id) && /^[a-f\d]{24}$/i.test(String(id));
+}
+
+// GET /api/attendance
 router.get('/', authenticate, async (req, res) => {
   try {
     const { page = 1, limit = 10, employee, date, status, month, year } = req.query;
-    
     const query = {};
-    
-    // If not admin, only show own attendance
     if (!['super_admin', 'admin', 'sub_admin'].includes(req.user.role)) {
-      query.employee = req.user._id;
-    } else if (employee) {
+      if (isValidObjectId(req.user._id)) query.employee = req.user._id;
+      else return res.json({ success: true, data: { attendance: [], pagination: { current: 1, pages: 0, total: 0 } } });
+    } else if (employee && isValidObjectId(employee)) {
       query.employee = employee;
     }
-    
     if (date) {
-      const startDate = new Date(date);
-      const endDate = new Date(date);
-      endDate.setDate(endDate.getDate() + 1);
-      query.date = { $gte: startDate, $lt: endDate };
+      const d = new Date(date);
+      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+      const end   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      query.date = { $gte: start, $lte: end };
     }
-    
-    if (month && year) {
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
-      query.date = { $gte: startDate, $lte: endDate };
-    }
-    
+    if (month && year) { query.date = { $gte: new Date(year, month - 1, 1), $lte: new Date(year, month, 0) }; }
     if (status) query.status = status;
-
-    const attendance = await Attendance.find(query)
-      .populate('employee', 'name email department')
-      .populate('approvedBy', 'name')
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ date: -1 });
-
+    const attendance = await Attendance.find(query).populate({ path: 'employee', select: 'name email department', options: { strictPopulate: false } }).sort({ date: -1 }).limit(limit * 1).skip((page - 1) * limit);
     const total = await Attendance.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: {
-        attendance,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get attendance error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching attendance'
-    });
+    res.json({ success: true, data: { attendance, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   POST /api/attendance/checkin
-// @desc    Check in attendance
-// @access  Private
-router.post('/checkin', [
-  authenticate,
-  body('date').optional().isISO8601(),
-  body('location.latitude').optional().isFloat(),
-  body('location.longitude').optional().isFloat()
-], logActivity('Attendance check-in', 'attendance', 'low'), async (req, res) => {
+// POST /api/attendance/checkin
+router.post('/checkin', authenticate, logActivity('Attendance check-in', 'attendance', 'low'), async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
+    if (!isValidObjectId(req.user._id)) return res.status(400).json({ success: false, message: 'Invalid user session. Please re-login.' });
 
-    const today = req.body.date ? new Date(req.body.date) : new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use date range for today (handles any timezone offset stored in DB)
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-    // Check if already checked in today
-    const existingAttendance = await Attendance.findOne({
+    const existing = await Attendance.findOne({
       employee: req.user._id,
-      date: today
+      date: { $gte: startOfDay, $lte: endOfDay },
     });
 
-    if (existingAttendance && existingAttendance.checkIn.time) {
-      return res.status(400).json({
-        success: false,
-        message: 'Already checked in today'
-      });
+    if (existing?.checkIn?.time) {
+      return res.status(400).json({ success: false, message: 'Already checked in today' });
     }
 
-    const checkInData = {
-      time: new Date(),
-      method: 'web'
-    };
-
-    if (req.body.location) {
-      checkInData.location = req.body.location;
-    }
+    const checkInTime = new Date();
 
     let attendance;
-    if (existingAttendance) {
-      existingAttendance.checkIn = checkInData;
-      attendance = await existingAttendance.save();
+    if (existing) {
+      existing.set('checkIn', { time: checkInTime, method: 'web' });
+      existing.markModified('checkIn');
+      attendance = await existing.save();
     } else {
-      attendance = new Attendance({
+      attendance = await Attendance.create({
         employee: req.user._id,
-        date: today,
-        checkIn: checkInData
+        date: startOfDay,
+        checkIn: { time: checkInTime, method: 'web' },
+        status: 'present',
       });
-      await attendance.save();
     }
 
-    const populatedAttendance = await Attendance.findById(attendance._id)
-      .populate('employee', 'name email');
-
-    res.json({
-      success: true,
-      message: 'Checked in successfully',
-      data: { attendance: populatedAttendance }
-    });
-  } catch (error) {
-    console.error('Check-in error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during check-in'
-    });
+    const populated = await Attendance.findById(attendance._id).populate({ path: 'employee', select: 'name email department', options: { strictPopulate: false } });
+    res.json({ success: true, message: 'Checked in successfully', data: { attendance: populated } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   POST /api/attendance/checkout
-// @desc    Check out attendance
-// @access  Private
-router.post('/checkout', [
-  authenticate,
-  body('date').optional().isISO8601(),
-  body('location.latitude').optional().isFloat(),
-  body('location.longitude').optional().isFloat()
-], logActivity('Attendance check-out', 'attendance', 'low'), async (req, res) => {
+// POST /api/attendance/checkout
+router.post('/checkout', authenticate, logActivity('Attendance check-out', 'attendance', 'low'), async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
+    if (!isValidObjectId(req.user._id)) return res.status(400).json({ success: false, message: 'Invalid user session. Please re-login.' });
 
-    const today = req.body.date ? new Date(req.body.date) : new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const attendance = await Attendance.findOne({
       employee: req.user._id,
-      date: today
+      date: { $gte: startOfDay, $lte: endOfDay },
     });
 
-    if (!attendance || !attendance.checkIn.time) {
-      return res.status(400).json({
-        success: false,
-        message: 'No check-in record found for today'
-      });
+    if (!attendance?.checkIn?.time) {
+      return res.status(400).json({ success: false, message: 'No check-in found for today' });
+    }
+    if (attendance.checkOut?.time) {
+      return res.status(400).json({ success: false, message: 'Already checked out today' });
     }
 
-    if (attendance.checkOut.time) {
-      return res.status(400).json({
-        success: false,
-        message: 'Already checked out today'
-      });
-    }
-
-    const checkOutData = {
-      time: new Date(),
-      method: 'web'
-    };
-
-    if (req.body.location) {
-      checkOutData.location = req.body.location;
-    }
-
-    attendance.checkOut = checkOutData;
+    attendance.set('checkOut', { time: new Date(), method: 'web' });
+    attendance.markModified('checkOut');
     await attendance.save();
 
-    const populatedAttendance = await Attendance.findById(attendance._id)
-      .populate('employee', 'name email');
-
-    res.json({
-      success: true,
-      message: 'Checked out successfully',
-      data: { attendance: populatedAttendance }
-    });
-  } catch (error) {
-    console.error('Check-out error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during check-out'
-    });
+    const populated = await Attendance.findById(attendance._id).populate({ path: 'employee', select: 'name email department', options: { strictPopulate: false } });
+    res.json({ success: true, message: 'Checked out successfully', data: { attendance: populated } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   GET /api/attendance/today
-// @desc    Get today's attendance status
-// @access  Private
+// GET /api/attendance/today
 router.get('/today', authenticate, async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    if (!isValidObjectId(req.user._id)) return res.json({ success: true, data: { attendance: null } });
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const attendance = await Attendance.findOne({
       employee: req.user._id,
-      date: today
-    }).populate('employee', 'name email');
+      date: { $gte: startOfDay, $lte: endOfDay },
+    }).populate({ path: 'employee', select: 'name email', options: { strictPopulate: false } });
 
-    res.json({
-      success: true,
-      data: { attendance }
-    });
-  } catch (error) {
-    console.error('Get today attendance error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching today\'s attendance'
-    });
+    res.json({ success: true, data: { attendance } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// @route   GET /api/attendance/stats
-// @desc    Get attendance statistics
-// @access  Private (Admin only)
+// GET /api/attendance/stats
 router.get('/stats', authenticate, authorize('super_admin', 'admin', 'sub_admin'), async (req, res) => {
   try {
-    const { month, year } = req.query;
-    
-    let startDate, endDate;
-    if (month && year) {
-      startDate = new Date(year, month - 1, 1);
-      endDate = new Date(year, month, 0);
-    } else {
-      // Current month
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    }
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const totalRecords = await Attendance.countDocuments({ date: { $gte: start, $lte: end } });
+    const statusStats = await Attendance.aggregate([{ $match: { date: { $gte: start, $lte: end } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]);
+    res.json({ success: true, data: { totalRecords, statusStats, avgHours: 0, lateArrivals: 0 } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
-    const totalRecords = await Attendance.countDocuments({
-      date: { $gte: startDate, $lte: endDate }
-    });
-
-    const statusStats = await Attendance.aggregate([
-      { $match: { date: { $gte: startDate, $lte: endDate } } },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-
-    const avgHours = await Attendance.aggregate([
-      { $match: { date: { $gte: startDate, $lte: endDate }, totalHours: { $gt: 0 } } },
-      { $group: { _id: null, avgHours: { $avg: '$totalHours' } } }
-    ]);
-
-    const lateArrivals = await Attendance.countDocuments({
-      date: { $gte: startDate, $lte: endDate },
-      status: 'late'
-    });
-
-    res.json({
-      success: true,
-      data: {
-        totalRecords,
-        statusStats,
-        avgHours: avgHours[0]?.avgHours || 0,
-        lateArrivals,
-        period: { startDate, endDate }
-      }
-    });
-  } catch (error) {
-    console.error('Get attendance stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching attendance statistics'
-    });
+// PUT /api/attendance/:id/override
+router.put('/:id/override', authenticate, authorize('super_admin', 'admin', 'sub_admin'), async (req, res) => {
+  try {
+    const attendance = await Attendance.findById(req.params.id);
+    if (!attendance) return res.status(404).json({ success: false, message: 'Record not found' });
+    const { checkIn, checkOut, status, notes } = req.body;
+    if (checkIn?.time) attendance.checkIn.time = new Date(checkIn.time);
+    if (checkOut?.time) attendance.checkOut.time = new Date(checkOut.time);
+    if (status) attendance.status = status;
+    if (notes) attendance.notes = notes;
+    if (isValidObjectId(req.user._id)) attendance.approvedBy = req.user._id;
+    await attendance.save();
+    res.json({ success: true, message: 'Attendance overridden', data: { attendance } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

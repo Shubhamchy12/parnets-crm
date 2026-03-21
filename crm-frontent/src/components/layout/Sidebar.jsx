@@ -1,148 +1,258 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  FolderOpen, 
-  CreditCard, 
-  ShoppingCart, 
-  FileText, 
-  Settings, 
-  HeadphonesIcon,
-  UserCheck,
-  Activity,
-  Calendar,
-  DollarSign
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  LayoutDashboard, Users, FolderOpen, FileText,
+  Settings, UserCheck, Activity, Calendar, DollarSign,
+  Target, ClipboardList, FileSignature, BarChart2,
+  HardDrive, UserCog, Building2, PanelLeftClose, PanelLeftOpen,
+  ChevronDown, UserPlus, Briefcase, GitBranch, AlarmClock, UserSquare2,
+  Receipt, ShoppingCart, CreditCard
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import Logo from '../common/Logo';
+import { toggleSidebar } from '../../store/slices/uiSlice';
+
+const ADMIN = ['admin', 'super_admin'];
+const SALES = ['admin', 'super_admin', 'sales'];
+const ALL_STAFF = ['admin', 'super_admin', 'sales', 'employee'];
+
+const menuGroups = [
+  {
+    group: null,
+    items: [
+      { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ADMIN },
+    ],
+  },
+
+  // ── Employee ──────────────────────────────────────────────
+  {
+    group: 'Employee',
+    items: [
+      { name: 'Employee Registration', icon: UserPlus,   path: '/employees/new',   roles: ADMIN },
+      { name: 'Employee Data',         icon: UserCheck,  path: '/employees',       roles: ADMIN },
+      { name: 'Attendance',            icon: Calendar,   path: '/attendance',      roles: ALL_STAFF },
+      { name: 'Leaves',                icon: AlarmClock, path: '/leaves',          roles: ALL_STAFF },
+      { name: 'Leave Approvals',       icon: UserSquare2,path: '/leaves/team',     roles: ADMIN },
+      { name: 'Salary',                icon: DollarSign, path: '/payments',        roles: ADMIN },
+      { name: 'Documents',             icon: HardDrive,  path: '/documents',       roles: ALL_STAFF },
+    ],
+  },
+
+  // ── Sales ─────────────────────────────────────────────────
+  {
+    group: 'Sales',
+    items: [
+      { name: 'Clients',   icon: Users,         path: '/clients',   roles: SALES },
+      { name: 'Projects',  icon: FolderOpen,    path: '/projects',  roles: SALES },
+      { name: 'My Projects', icon: Briefcase,   path: '/my-projects', roles: ['employee'] },
+      { name: 'Leads',     icon: Target,        path: '/leads',     roles: SALES },
+      { name: 'Quotes',    icon: FileText,      path: '/quotes',    roles: SALES },
+      { name: 'Invoices',  icon: CreditCard,    path: '/invoices',  roles: SALES },
+      { name: 'Contracts', icon: FileSignature, path: '/contracts', roles: SALES },
+    ],
+  },
+
+  // ── Workflow ──────────────────────────────────────────────
+  {
+    group: 'Workflow',
+    items: [
+      { name: 'Assign Project',   icon: GitBranch,     path: '/assign-project', roles: ADMIN },
+      { name: 'Tasks',            icon: ClipboardList, path: '/tasks',          roles: ALL_STAFF },
+      { name: 'Time Log',         icon: Briefcase,     path: '/timelog',        roles: ALL_STAFF },
+    ],
+  },
+
+  // ── Admin ─────────────────────────────────────────────────
+  {
+    group: 'Admin',
+    items: [
+      { name: 'Accounting',    icon: Receipt,    path: '/accounting',      roles: ADMIN },
+      { name: 'Procurement',   icon: ShoppingCart, path: '/procurement',   roles: ADMIN },
+      { name: 'Reports',       icon: BarChart2,  path: '/reports',         roles: ADMIN },
+      { name: 'AMC',           icon: Building2,  path: '/amc',             roles: ADMIN },
+      { name: 'User Mgmt',     icon: UserCog,    path: '/user-management', roles: ADMIN },
+      { name: 'Activity Logs', icon: Activity,   path: '/activity-logs',   roles: ['super_admin'] },
+      { name: 'Settings',      icon: Settings,   path: '/settings',        roles: ADMIN },
+    ],
+  },
+];
 
 const Sidebar = () => {
   const { user } = useAuth();
+  const dispatch = useDispatch();
+  const sidebarOpen = useSelector(s => s.ui.sidebarOpen);
+  const [collapsed, setCollapsed] = useState({});
 
-  const menuItems = [
-    { 
-      name: 'Dashboard', 
-      icon: LayoutDashboard, 
-      path: '/dashboard',
-      roles: ['super_admin', 'admin', 'sub_admin', 'accounts_manager', 'support_executive']
-    },
-    { 
-      name: 'Clients', 
-      icon: Users, 
-      path: '/clients',
-      roles: ['super_admin', 'admin', 'sub_admin']
-    },
-    { 
-      name: 'Projects', 
-      icon: FolderOpen, 
-      path: '/projects',
-      roles: ['super_admin', 'admin', 'sub_admin', 'developer']
-    },
-    { 
-      name: 'Employees', 
-      icon: UserCheck, 
-      path: '/employees',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      name: 'Attendance', 
-      icon: Calendar, 
-      path: '/attendance',
-      roles: ['super_admin', 'admin', 'sub_admin']
-    },
-    { 
-      name: 'Payments', 
-      icon: CreditCard, 
-      path: '/payments',
-      roles: ['super_admin', 'admin', 'accounts_manager']
-    },
-    { 
-      name: 'Procurement', 
-      icon: ShoppingCart, 
-      path: '/procurement',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      name: 'Invoices', 
-      icon: FileText, 
-      path: '/invoices',
-      roles: ['super_admin', 'admin', 'accounts_manager']
-    },
-    { 
-      name: 'AMC', 
-      icon: Settings, 
-      path: '/amc',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      name: 'Support', 
-      icon: HeadphonesIcon, 
-      path: '/support',
-      roles: ['super_admin', 'admin', 'support_executive']
-    },
-    { 
-      name: 'Accounting', 
-      icon: DollarSign, 
-      path: '/accounting',
-      roles: ['super_admin', 'admin', 'accounts_manager']
-    },
-    { 
-      name: 'Activity Logs', 
-      icon: Activity, 
-      path: '/activity-logs',
-      roles: ['super_admin']
-    }
-  ];
-
-  const filteredMenuItems = menuItems.filter(item => 
-    item.roles.includes(user?.role)
-  );
+  const toggle = (g) => setCollapsed(p => ({ ...p, [g]: !p[g] }));
 
   return (
-    <div className="w-64 h-screen bg-slate-800 shadow-lg border-r border-slate-700 flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-slate-700 flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          <Logo size="small" showText={false} />
-          <div>
-            <h2 className="text-lg font-bold text-white">CRM System</h2>
-            <p className="text-sm text-slate-300">{user?.name}</p>
+    <aside
+      className="h-screen flex flex-col flex-shrink-0 relative"
+      style={{
+        width: sidebarOpen ? '228px' : '62px',
+        background: 'var(--sidebar-bg)',
+        borderRight: '1px solid var(--sidebar-border)',
+        transition: 'width 0.25s cubic-bezier(.4,0,.2,1)',
+      }}
+    >
+      {/* ── Logo row ── */}
+      <div
+        className="flex items-center flex-shrink-0 px-3"
+        style={{
+          height: '60px',
+          borderBottom: '1px solid var(--sidebar-border)',
+          justifyContent: sidebarOpen ? 'space-between' : 'center',
+        }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Logo mark — orange+blue gradient ring */}
+          <div
+            className="flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center"
+            style={{
+              width: 36, height: 36,
+              background: 'linear-gradient(135deg, #2563eb 0%, #f97316 100%)',
+              padding: 2,
+            }}
+          >
+            <div className="w-full h-full rounded-lg overflow-hidden bg-white">
+              <img src="/logo.jpg" alt="Parnets" className="w-full h-full object-contain" />
+            </div>
           </div>
+
+          {sidebarOpen && (
+            <div className="min-w-0">
+              <p className="text-sm font-bold leading-tight truncate" style={{ color: 'var(--text-1)' }}>Parnets</p>
+              <p
+                className="text-[10px] font-semibold tracking-wide"
+                style={{ background: 'linear-gradient(90deg,#2563eb,#f97316)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+              >
+                CRM SUITE
+              </p>
+            </div>
+          )}
         </div>
+
+        {sidebarOpen && (
+          <button
+            onClick={() => dispatch(toggleSidebar())}
+            className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+            style={{ color: 'var(--text-4)', background: 'var(--bg-surface2)' }}
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <div className="space-y-2">
-          {filteredMenuItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`
-                }
-              >
-                <Icon className="h-5 w-5" />
-                <span className="font-medium">{item.name}</span>
-              </NavLink>
-            );
-          })}
-        </div>
+      {/* Expand button when collapsed */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => dispatch(toggleSidebar())}
+          className="absolute -right-3 top-[22px] w-6 h-6 rounded-full flex items-center justify-center z-20 shadow-md"
+          style={{ background: 'var(--brand)', color: '#fff', border: '2px solid var(--sidebar-bg)' }}
+          title="Expand sidebar"
+        >
+          <PanelLeftOpen className="w-3 h-3" />
+        </button>
+      )}
+
+      {/* ── Nav ── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5">
+        {menuGroups.map(({ group, items }) => {
+          const visible = items.filter(i => i.roles.includes(user?.role));
+          if (!visible.length) return null;
+          const isCollapsed = collapsed[group];
+
+          return (
+            <div key={group || '__main'}>
+              {/* Group header */}
+              {group && sidebarOpen && (
+                <button
+                  onClick={() => toggle(group)}
+                  className="w-full flex items-center justify-between px-2 py-1 mt-3 mb-0.5 rounded-md transition-colors"
+                  style={{ color: 'var(--text-4)' }}
+                >
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    {group}
+                  </span>
+                  <ChevronDown
+                    className="w-3 h-3 transition-transform"
+                    style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                  />
+                </button>
+              )}
+
+              {/* Thin divider in collapsed mode */}
+              {group && !sidebarOpen && (
+                <div className="my-2 mx-2" style={{ height: 1, background: 'var(--sidebar-border)' }} />
+              )}
+
+              {/* Nav items */}
+              {!isCollapsed && visible.map(item => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.name}
+                    to={item.path}
+                    title={!sidebarOpen ? item.name : undefined}
+                    className="relative group flex items-center rounded-lg text-sm transition-all duration-150"
+                    style={({ isActive }) => ({
+                      gap: sidebarOpen ? '10px' : 0,
+                      padding: sidebarOpen ? '8px 10px' : '9px 0',
+                      justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                      background: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
+                      color: isActive ? 'var(--sidebar-text-active)' : 'var(--sidebar-text)',
+                      fontWeight: isActive ? 600 : 500,
+                      borderLeft: isActive && sidebarOpen ? '3px solid var(--sidebar-accent-bar)' : '3px solid transparent',
+                      marginLeft: sidebarOpen ? 0 : 0,
+                    })}
+                    onMouseEnter={e => {
+                      if (!e.currentTarget.getAttribute('aria-current')) {
+                        e.currentTarget.style.background = 'var(--sidebar-hover-bg)';
+                        e.currentTarget.style.color = 'var(--text-1)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!e.currentTarget.getAttribute('aria-current')) {
+                        e.currentTarget.style.background = '';
+                        e.currentTarget.style.color = '';
+                      }
+                    }}
+                  >
+                    <Icon className="w-[17px] h-[17px] flex-shrink-0" />
+                    {sidebarOpen && <span className="truncate">{item.name}</span>}
+
+                    {/* Tooltip when collapsed */}
+                    {!sidebarOpen && (
+                      <span
+                        className="pointer-events-none absolute left-[52px] px-2.5 py-1.5 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50"
+                        style={{
+                          background: 'var(--text-1)',
+                          color: 'var(--bg-surface)',
+                          border: '1px solid var(--border)',
+                        }}
+                      >
+                        {item.name}
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-slate-700 flex-shrink-0">
-        <div className="text-center">
-          <p className="text-xs text-slate-400">© 2024 CRM System</p>
+      {/* ── Footer ── */}
+      {sidebarOpen && (
+        <div
+          className="flex-shrink-0 px-4 py-3 text-center"
+          style={{ borderTop: '1px solid var(--sidebar-border)', fontSize: '0.65rem', color: 'var(--text-4)' }}
+        >
+          © 2026 Parnets Networks Pvt. Ltd.
         </div>
-      </div>
-    </div>
+      )}
+    </aside>
   );
 };
 

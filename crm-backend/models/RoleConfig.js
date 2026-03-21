@@ -5,7 +5,7 @@ const roleConfigSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    enum: ['super_admin', 'employee', 'sales', 'client']
+    enum: ['super_admin', 'admin', 'employee', 'sales']
   },
   displayName: { 
     type: String, 

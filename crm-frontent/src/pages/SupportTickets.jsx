@@ -50,7 +50,7 @@ const SupportTickets = () => {
   const loadTickets = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/support-tickets');
+      const response = await api.get('/tickets');
       if (response.success) {
         setTickets(response.data.tickets || []);
       } else {

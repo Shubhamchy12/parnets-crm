@@ -1,59 +1,168 @@
-import { Bell, LogOut, User, Search } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Bell, LogOut, Search, Sun, Moon } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import { toggleTheme } from '../../store/slices/uiSlice';
 import { useAuth } from '../../contexts/AuthContext';
-import Logo from '../common/Logo';
+import NotificationPanel from '../common/NotificationPanel';
+import Avatar from '../common/Avatar';
 
 const Header = () => {
   const { user, logout } = useAuth();
+  const dispatch = useDispatch();
+  const { unreadCount } = useSelector(s => s.notifications);
+  const theme = useSelector(s => s.ui.theme);
+  const isDark = theme === 'dark';
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef();
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   return (
-    <header className="bg-white shadow-md border-b-2 border-slate-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        {/* Left - Logo and Title */}
-        <div className="flex items-center space-x-4">
-          <Logo size="small" showText={false} />
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">CRM System</h1>
-            <p className="text-sm text-slate-600">Welcome back, {user?.name}</p>
-          </div>
+    <header
+      className="flex-shrink-0 flex items-center justify-between px-5"
+      style={{
+        height: '60px',
+        background: 'var(--header-bg)',
+        borderBottom: '1px solid var(--header-border)',
+        transition: 'background 0.2s, border-color 0.2s',
+      }}
+    >
+      {/* ── Left: Search ── */}
+      <div className="flex items-center gap-3 flex-1 max-w-sm">
+        <div
+          className="flex items-center gap-2 flex-1 rounded-xl px-3"
+          style={{
+            height: '38px',
+            background: 'var(--input-bg)',
+            border: '1.5px solid var(--input-border)',
+            transition: 'border-color 0.15s, box-shadow 0.15s',
+          }}
+          onFocusCapture={e => {
+            e.currentTarget.style.borderColor = 'var(--border-focus)';
+            e.currentTarget.style.boxShadow = '0 0 0 3px var(--brand-light)';
+          }}
+          onBlurCapture={e => {
+            e.currentTarget.style.borderColor = 'var(--input-border)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          <Search className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-4)' }} />
+          <input
+            type="text"
+            placeholder="Search anything..."
+            className="flex-1 bg-transparent text-sm outline-none"
+            style={{ color: 'var(--text-1)', caretColor: 'var(--brand)' }}
+          />
+        </div>
+      </div>
+
+      {/* ── Right: actions ── */}
+      <div className="flex items-center gap-1.5">
+
+        {/* Theme toggle */}
+        <button
+          onClick={() => dispatch(toggleTheme())}
+          className="relative flex items-center rounded-xl overflow-hidden transition-all duration-300"
+          style={{
+            width: 76,
+            height: 36,
+            background: isDark
+              ? 'linear-gradient(135deg, #1c2333, #0e1117)'
+              : 'linear-gradient(135deg, #eff6ff, #fff7ed)',
+            border: '1.5px solid var(--border)',
+            padding: 3,
+          }}
+          title={isDark ? 'Switch to Light' : 'Switch to Dark'}
+        >
+          {/* sliding pill */}
+          <span
+            className="absolute rounded-lg flex items-center justify-center transition-all duration-300"
+            style={{
+              width: 28, height: 28,
+              background: isDark
+                ? 'linear-gradient(135deg, #1d4ed8, #2563eb)'
+                : 'linear-gradient(135deg, #f97316, #fb923c)',
+              left: isDark ? 42 : 3,
+              boxShadow: isDark
+                ? '0 2px 8px rgba(37,99,235,0.5)'
+                : '0 2px 8px rgba(249,115,22,0.5)',
+            }}
+          >
+            {isDark
+              ? <Moon className="w-3.5 h-3.5 text-white" />
+              : <Sun className="w-3.5 h-3.5 text-white" />
+            }
+          </span>
+          {/* label */}
+          <span
+            className="text-[10px] font-bold absolute"
+            style={{
+              left: isDark ? 8 : undefined,
+              right: isDark ? undefined : 7,
+              color: isDark ? '#60a5fa' : '#f97316',
+              letterSpacing: '0.03em',
+            }}
+          >
+            {isDark ? 'DARK' : 'LIGHT'}
+          </span>
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-6 mx-1" style={{ background: 'var(--border)' }} />
+
+        {/* Notifications */}
+        <div ref={notifRef} className="relative">
+          <button
+            onClick={() => setNotifOpen(o => !o)}
+            className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            style={{ color: 'var(--text-3)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-surface2)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+          >
+            <Bell className="w-[18px] h-[18px]" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute top-1 right-1 w-4 h-4 text-white text-[9px] font-bold rounded-full flex items-center justify-center"
+                style={{ background: 'var(--accent)', fontSize: '9px' }}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
         </div>
 
-        {/* Right - Search and User */}
-        <div className="flex items-center space-x-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="pl-10 pr-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64 bg-white text-slate-800"
-            />
-          </div>
+        {/* Divider */}
+        <div className="w-px h-6 mx-1" style={{ background: 'var(--border)' }} />
 
-          {/* Notifications */}
-          <button className="relative p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-300">
-            <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-              3
-            </span>
-          </button>
-
-          {/* User Profile */}
-          <div className="flex items-center space-x-3 bg-slate-50 rounded-lg p-2 border border-slate-300">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <User className="h-4 w-4 text-white" />
-            </div>
-            <div className="text-sm">
-              <p className="font-medium text-slate-800">{user?.name}</p>
-              <p className="text-blue-600 capitalize font-medium">{user?.role?.replace('_', ' ')}</p>
-            </div>
-            <button
-              onClick={logout}
-              className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-300"
-              title="Logout"
+        {/* User */}
+        <div className="flex items-center gap-2.5 pl-1">
+          <Avatar name={user?.name || ''} size="sm" />
+          <div className="hidden sm:block leading-tight">
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{user?.name}</p>
+            <p
+              className="text-[10px] font-semibold capitalize"
+              style={{ background: 'linear-gradient(90deg,var(--brand),var(--accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
             >
-              <LogOut className="h-4 w-4" />
-            </button>
+              {user?.role?.replace(/_/g, ' ')}
+            </p>
           </div>
+          <button
+            onClick={logout}
+            title="Logout"
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors ml-1"
+            style={{ color: 'var(--text-4)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.08)'; e.currentTarget.style.color = 'var(--danger)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-4)'; }}
+          >
+            <LogOut className="w-[17px] h-[17px]" />
+          </button>
         </div>
       </div>
     </header>

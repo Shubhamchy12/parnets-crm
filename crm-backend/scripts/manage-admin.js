@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Connect to MongoDB
-await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/crm-database');
+await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://parnetstech13:parnets13@cluster0.svfj4.mongodb.net/crm-system?retryWrites=true&w=majority');
 
 const command = process.argv[2];
 const email = process.argv[3];
