@@ -77,13 +77,28 @@ const quotationSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// Auto-generate quotation number before save
-quotationSchema.pre('save', async function (next) {
-  if (!this.quotationNumber) {
-    const count = await mongoose.model('Quotation').countDocuments();
-    this.quotationNumber = `QTN-${String(count + 1001).padStart(4, '0')}`;
+// Auto-generate a unique quotation number, retrying on collision (handles race conditions)
+quotationSchema.statics.generateQuotationNumber = async function () {
+  const MAX_RETRIES = 10;
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    const last = await this.findOne(
+      { quotationNumber: { $regex: /^QTN-\d+$/ } },
+      { quotationNumber: 1 },
+      { sort: { quotationNumber: -1 } }
+    ).lean();
+
+    const lastNum = last
+      ? parseInt(last.quotationNumber.replace('QTN-', ''), 10)
+      : 1000;
+
+    const candidate = `QTN-${String(lastNum + 1).padStart(4, '0')}`;
+
+    // Check it doesn't already exist (concurrent insert guard)
+    const exists = await this.exists({ quotationNumber: candidate });
+    if (!exists) return candidate;
   }
-  next();
-});
+  // Fallback: timestamp-based unique number
+  return `QTN-${Date.now()}`;
+};
 
 export default mongoose.model('Quotation', quotationSchema);

@@ -65,11 +65,11 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/employees/my-face — returns logged-in user's facePhoto
+// GET /api/employees/my-face — returns logged-in user's faceDescriptor
 router.get('/my-face', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('+facePhoto');
-    res.json({ success: true, data: { facePhoto: user?.facePhoto || null } });
+    const user = await User.findById(req.user._id).select('+faceDescriptor');
+    res.json({ success: true, data: { faceDescriptor: user?.faceDescriptor || null } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -90,12 +90,12 @@ router.get('/stats', authenticate, authorize('super_admin', 'admin'), async (req
   }
 });
 
-// GET /api/employees/:id/face — returns facePhoto for attendance matching
+// GET /api/employees/:id/face — returns faceDescriptor for attendance matching
 router.get('/:id/face', authenticate, async (req, res) => {
   try {
-    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('+facePhoto');
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('+facePhoto +faceDescriptor');
     if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
-    res.json({ success: true, data: { facePhoto: employee.facePhoto || null } });
+    res.json({ success: true, data: { facePhoto: employee.facePhoto || null, faceDescriptor: employee.faceDescriptor || null } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -104,9 +104,14 @@ router.get('/:id/face', authenticate, async (req, res) => {
 // GET /api/employees/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }).select('-password');
+    const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } })
+      .select('-password +faceDescriptor');
     if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
-    res.json({ success: true, data: { employee } });
+    const obj = employee.toObject();
+    // Don't expose raw descriptor — just flag whether it's enrolled
+    obj.faceEnrolled = !!obj.faceDescriptor;
+    delete obj.faceDescriptor;
+    res.json({ success: true, data: { employee: obj } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -115,7 +120,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/employees/register — multipart: employee data + documents + bank details
 router.post('/register', authenticate, authorize('super_admin', 'admin'), docFields, async (req, res) => {
   try {
-    const { name, email, password, role, department, designation, phone, salary, joiningDate, facePhoto,
+    const { name, email, password, role, department, designation, phone, salary, joiningDate, facePhoto, faceDescriptor,
             bankName, accountHolderName, accountNumber, ifscCode, branchName } = req.body;
 
     if (!name || !email || !role || !department)
@@ -146,6 +151,7 @@ router.post('/register', authenticate, authorize('super_admin', 'admin'), docFie
       status: 'active',
       createdBy: req.user._id,
       ...(facePhoto ? { facePhoto } : {}),
+      ...(faceDescriptor ? { faceDescriptor } : {}),
       employeeDocs,
       bankDetails: { bankName, accountHolderName, accountNumber, ifscCode, branchName },
     });
@@ -192,11 +198,73 @@ router.post('/', authenticate, authorize('super_admin', 'admin'), async (req, re
   }
 });
 
-// PUT /api/employees/:id
+// PUT /api/employees/:id/full — multipart update (same fields as register)
+router.put('/:id/full', authenticate, authorize('super_admin', 'admin'), docFields, async (req, res) => {
+  try {
+    const { name, phone, role, department, designation, employeeId, joiningDate, salary, status,
+            bankName, accountHolderName, accountNumber, ifscCode, branchName } = req.body;
+
+    if (role && NON_EMPLOYEE_ROLES.includes(role))
+      return res.status(400).json({ success: false, message: 'Cannot assign admin role via employee endpoint' });
+
+    const files = req.files || {};
+    const docKeys = ['aadhaar','pan','education','experience','salarySlip1','salarySlip2','salarySlip3'];
+
+    const set = {};
+    if (name)        set.name        = name;
+    if (phone !== undefined) set.phone = phone;
+    if (role)        set.role        = role;
+    if (department)  set.department  = department;
+    if (designation) set.designation = designation;
+    if (employeeId !== undefined) set.employeeId = employeeId;
+    if (joiningDate) set.joiningDate = new Date(joiningDate);
+    if (salary)      set.salary      = Number(salary);
+    if (status)      set.status      = status;
+
+    if (bankName !== undefined)          set['bankDetails.bankName']          = bankName;
+    if (accountHolderName !== undefined) set['bankDetails.accountHolderName'] = accountHolderName;
+    if (accountNumber !== undefined)     set['bankDetails.accountNumber']     = accountNumber;
+    if (ifscCode !== undefined)          set['bankDetails.ifscCode']          = ifscCode;
+    if (branchName !== undefined)        set['bankDetails.branchName']        = branchName;
+
+    for (const key of docKeys) {
+      if (files[key]?.[0]) {
+        const f = files[key][0];
+        set[`employeeDocs.${key}`] = { filename: f.filename, path: f.path, originalName: f.originalname };
+      }
+    }
+
+    const employee = await User.findOneAndUpdate(
+      { _id: req.params.id },
+      { $set: set },
+      { new: true }
+    ).select('-password');
+
+    if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    res.json({ success: true, message: 'Employee updated', data: { employee } });
+  } catch (e) {
+    console.error('PUT /full error:', e);
+    res.status(500).json({ success: false, message: e.message || 'Server error' });
+  }
+});
+
+// PUT /api/employees/:id — JSON only (simple field updates)
 router.put('/:id', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
-    const updates = { ...req.body }; delete updates.password;
-    const employee = await User.findOneAndUpdate({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } }, updates, { new: true }).select('-password');
+    const updates = { ...req.body };
+    delete updates.password;
+    // faceDescriptor and facePhoto have select:false — use $set explicitly so they are saved
+    const setFields = {};
+    if (updates.faceDescriptor !== undefined) { setFields.faceDescriptor = updates.faceDescriptor; delete updates.faceDescriptor; }
+    if (updates.facePhoto !== undefined)      { setFields.facePhoto = updates.facePhoto;      delete updates.facePhoto; }
+    const updateOp = Object.keys(setFields).length > 0
+      ? { $set: { ...updates, ...setFields } }
+      : updates;
+    const employee = await User.findOneAndUpdate(
+      { _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } },
+      updateOp,
+      { new: true }
+    ).select('-password');
     if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
     res.json({ success: true, message: 'Employee updated', data: { employee } });
   } catch (e) {
@@ -216,18 +284,27 @@ router.delete('/:id', authenticate, authorize('super_admin', 'admin'), async (re
 });
 
 // POST /api/employees/:id/enrol-face
-router.post('/:id/enrol-face', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
+// Admin can enrol any employee; employee can enrol themselves
+router.post('/:id/enrol-face', authenticate, async (req, res) => {
   try {
-    const { descriptor, framesCount } = req.body;
-    if (!descriptor) return res.status(400).json({ success: false, message: 'Face descriptor required' });
+    const isAdmin = ['super_admin', 'admin'].includes(req.user.role);
+    const isSelf  = req.user._id.toString() === req.params.id;
+    if (!isAdmin && !isSelf)
+      return res.status(403).json({ success: false, message: 'Not authorised' });
+
+    const { descriptor } = req.body;
+    if (!descriptor || !Array.isArray(descriptor))
+      return res.status(400).json({ success: false, message: 'Face descriptor array required' });
+
     const employee = await User.findOneAndUpdate(
       { _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } },
-      { facePhoto: JSON.stringify(descriptor), faceEnrolledAt: new Date() },
+      { $set: { faceDescriptor: JSON.stringify(descriptor), faceEnrolledAt: new Date() } },
       { new: true }
     ).select('-password');
     if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
-    res.json({ success: true, message: 'Face enrolled successfully', data: { employee } });
+    res.json({ success: true, message: 'Face enrolled successfully' });
   } catch (e) {
+    console.error('enrol-face error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

@@ -1,13 +1,10 @@
 import express from 'express';
+import Leave from '../models/Leave.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
 
 const router = express.Router();
-
-// In-memory store (replace with MongoDB model when ready)
-let leaves = [];
-let leaveIdCounter = 1;
 
 const LEAVE_BALANCE = {
   cl: { total: 12 },
@@ -30,11 +27,14 @@ const HOLIDAYS = [
 router.get('/', authenticate, async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    let result = leaves.filter(l => l.employee === req.user._id.toString());
-    if (status) result = result.filter(l => l.status === status);
-    const total = result.length;
-    const paginated = result.slice((page - 1) * limit, page * limit);
-    res.json({ success: true, data: { leaves: paginated, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
+    const filter = { employee: req.user._id };
+    if (status) filter.status = status;
+    const total = await Leave.countDocuments(filter);
+    const leaves = await Leave.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(+limit);
+    res.json({ success: true, data: { leaves, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -43,7 +43,7 @@ router.get('/', authenticate, async (req, res) => {
 // GET /api/leaves/balance
 router.get('/balance', authenticate, async (req, res) => {
   try {
-    const myLeaves = leaves.filter(l => l.employee === req.user._id.toString() && l.status === 'approved');
+    const myLeaves = await Leave.find({ employee: req.user._id, status: 'approved' });
     const used = { cl: 0, sl: 0, el: 0 };
     myLeaves.forEach(l => {
       const type = l.leaveType?.toLowerCase().replace(' ', '_');
@@ -75,27 +75,32 @@ router.get('/holidays', authenticate, async (req, res) => {
 router.get('/team', authenticate, authorize('super_admin', 'admin', 'manager', 'sub_admin'), async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    let result = [...leaves];
-    if (status) result = result.filter(l => l.status === status);
-    // Sort newest first
-    result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const total = result.length;
-    const paginated = result.slice((page - 1) * limit, page * limit);
-    res.json({ success: true, data: { leaves: paginated, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
+    const filter = {};
+    if (status) filter.status = status;
+    const total = await Leave.countDocuments(filter);
+    const leaves = await Leave.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(+limit)
+      .populate('employee', 'name department');
+    res.json({ success: true, data: { leaves, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// GET /api/leaves/admin — admin view
+// GET /api/leaves/admin
 router.get('/admin', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    let result = [...leaves];
-    if (status) result = result.filter(l => l.status === status);
-    const total = result.length;
-    const paginated = result.slice((page - 1) * limit, page * limit);
-    res.json({ success: true, data: { leaves: paginated, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
+    const filter = {};
+    if (status) filter.status = status;
+    const total = await Leave.countDocuments(filter);
+    const leaves = await Leave.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(+limit);
+    res.json({ success: true, data: { leaves, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -110,8 +115,6 @@ router.post('/', authenticate, logActivity('Leave application', 'leave', 'low'),
     }
 
     const isAdmin = ['super_admin', 'admin', 'manager'].includes(req.user.role);
-
-    // Admin can apply on behalf of an employee
     let targetUser = req.user;
     if (isAdmin && employeeId && employeeId !== req.user._id.toString()) {
       const emp = await User.findById(employeeId).select('name email department');
@@ -122,17 +125,16 @@ router.post('/', authenticate, logActivity('Leave application', 'leave', 'low'),
     const from = new Date(fromDate);
     const to = new Date(toDate);
     const days = Math.ceil((to - from) / (1000 * 60 * 60 * 24)) + 1;
-    const leave = {
-      _id: String(leaveIdCounter++),
-      employee: targetUser._id.toString(),
+
+    const leave = await Leave.create({
+      employee: targetUser._id,
       employeeName: targetUser.name,
       leaveType, fromDate, toDate, days, reason,
       status: 'pending',
-      appliedBy: req.user._id.toString(),
+      appliedBy: req.user._id,
       appliedByName: req.user.name,
-      createdAt: new Date().toISOString(),
-    };
-    leaves.push(leave);
+    });
+
     res.status(201).json({ success: true, message: 'Leave applied successfully', data: { leave } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -141,29 +143,43 @@ router.post('/', authenticate, logActivity('Leave application', 'leave', 'low'),
 
 // GET /api/leaves/:id
 router.get('/:id', authenticate, async (req, res) => {
-  const leave = leaves.find(l => l._id === req.params.id);
-  if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
-  res.json({ success: true, data: { leave } });
+  try {
+    const leave = await Leave.findById(req.params.id);
+    if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
+    res.json({ success: true, data: { leave } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // PUT /api/leaves/:id/approve
 router.put('/:id/approve', authenticate, authorize('super_admin', 'admin', 'manager'), logActivity('Leave approved', 'leave', 'medium'), async (req, res) => {
-  const leave = leaves.find(l => l._id === req.params.id);
-  if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
-  leave.status = 'approved';
-  leave.approvedBy = req.user._id.toString();
-  leave.approvedAt = new Date().toISOString();
-  res.json({ success: true, message: 'Leave approved', data: { leave } });
+  try {
+    const leave = await Leave.findByIdAndUpdate(
+      req.params.id,
+      { status: 'approved', approvedBy: req.user._id, approvedAt: new Date() },
+      { new: true }
+    );
+    if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
+    res.json({ success: true, message: 'Leave approved', data: { leave } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // PUT /api/leaves/:id/reject
 router.put('/:id/reject', authenticate, authorize('super_admin', 'admin', 'manager'), logActivity('Leave rejected', 'leave', 'medium'), async (req, res) => {
-  const leave = leaves.find(l => l._id === req.params.id);
-  if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
-  leave.status = 'rejected';
-  leave.rejectedBy = req.user._id.toString();
-  leave.rejectionReason = req.body.reason || '';
-  res.json({ success: true, message: 'Leave rejected', data: { leave } });
+  try {
+    const leave = await Leave.findByIdAndUpdate(
+      req.params.id,
+      { status: 'rejected', rejectedBy: req.user._id, rejectionReason: req.body.reason || '' },
+      { new: true }
+    );
+    if (!leave) return res.status(404).json({ success: false, message: 'Leave not found' });
+    res.json({ success: true, message: 'Leave rejected', data: { leave } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 export default router;

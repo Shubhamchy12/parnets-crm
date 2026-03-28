@@ -17,7 +17,7 @@ export const logActivity = (action, entity, severity = 'low') => {
             const isValidObjectId = userId && /^[a-f\d]{24}$/i.test(String(userId));
             if (!isValidObjectId) return;
 
-            const rawEntityId = data.data?._id || req.params?.id;
+            const rawEntityId = data.data?._id || data.data?.quotation?._id || req.params?.id;
             const isValidEntityId = rawEntityId && /^[a-f\d]{24}$/i.test(String(rawEntityId));
 
             Activity.create({

@@ -1,48 +1,46 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
-import User from '../models/User.js';
+import { authenticate } from '../middleware/auth.js';
 import Client from '../models/Client.js';
 import Project from '../models/Project.js';
 import Attendance from '../models/Attendance.js';
+import Invoice from '../models/Invoice.js';
+import Ticket from '../models/Ticket.js';
+import Leave from '../models/Leave.js';
 
 const router = express.Router();
 
-const adminRoles = ['super_admin', 'admin', 'manager', 'accounts_manager'];
-
 function dateRange(from, to) {
   const start = from ? new Date(from) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const end = to ? new Date(to) : new Date();
+  const end   = to   ? new Date(to)   : new Date();
+  end.setHours(23, 59, 59, 999);
   return { start, end };
 }
 
-// GET /api/reports/sales
-router.get('/sales', authenticate, authorize(...adminRoles), async (req, res) => {
+// ── SALES — list = ALL clients, summary = date-filtered counts ────────────────
+router.get('/sales', authenticate, async (req, res) => {
   try {
     const { from, to } = req.query;
     const { start, end } = dateRange(from, to);
 
-    const clients = await Client.countDocuments({ createdAt: { $gte: start, $lte: end } });
-    const totalClients = await Client.countDocuments();
-    const activeClients = await Client.countDocuments({ status: 'active' });
-
-    // Monthly client acquisition
-    const monthly = await Client.aggregate([
-      { $match: { createdAt: { $gte: start, $lte: end } } },
-      { $group: { _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } }, count: { $sum: 1 } } },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    const [newClients, totalClients, activeClients, prospects] = await Promise.all([
+      Client.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+      Client.countDocuments(),
+      Client.countDocuments({ status: 'active' }),
+      Client.countDocuments({ status: 'prospect' }),
     ]);
 
-    const chartData = monthly.map(m => ({
-      label: `${m._id.year}-${String(m._id.month).padStart(2, '0')}`,
-      value: m.count,
-    }));
+    // Show ALL clients sorted newest first — no date filter on list
+    const list = await Client.find({})
+      .select('name company email phone status source createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({
       success: true,
       data: {
-        summary: { newClients: clients, totalClients, activeClients, conversionRate: totalClients > 0 ? Math.round((activeClients / totalClients) * 100) : 0 },
-        chartData,
-      }
+        summary: { newClients, totalClients, activeClients, prospects },
+        list,
+      },
     });
   } catch (e) {
     console.error(e);
@@ -50,108 +48,146 @@ router.get('/sales', authenticate, authorize(...adminRoles), async (req, res) =>
   }
 });
 
-// GET /api/reports/finance
-router.get('/finance', authenticate, authorize(...adminRoles), async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      data: {
-        summary: { totalRevenue: 0, pendingInvoices: 0, paidInvoices: 0, overdueInvoices: 0 },
-        chartData: [],
-      }
-    });
-  } catch (e) {
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-// GET /api/reports/attendance
-router.get('/attendance', authenticate, authorize(...adminRoles), async (req, res) => {
+// ── FINANCE — list = ALL invoices, summary = date-filtered ───────────────────
+router.get('/finance', authenticate, async (req, res) => {
   try {
     const { from, to } = req.query;
     const { start, end } = dateRange(from, to);
 
-    const total = await Attendance.countDocuments({ date: { $gte: start, $lte: end } });
-    const present = await Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'present' });
-    const absent = await Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'absent' });
-    const late = await Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'late' });
+    // Summary from date range
+    const rangeInvoices = await Invoice.find({ createdAt: { $gte: start, $lte: end } })
+      .select('total paidAmount remainingAmount status').lean();
 
-    const monthly = await Attendance.aggregate([
-      { $match: { date: { $gte: start, $lte: end } } },
-      { $group: { _id: { year: { $year: '$date' }, month: { $month: '$date' } }, count: { $sum: 1 }, present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } } } },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
+    const totalRevenue   = rangeInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0);
+    const totalCollected = rangeInvoices.reduce((s, i) => s + (i.paidAmount || 0), 0);
+    const totalPending   = rangeInvoices.reduce((s, i) => s + (i.remainingAmount || 0), 0);
+    const paidInvoices   = rangeInvoices.filter(i => i.status === 'paid').length;
+    const pendingInvoices = rangeInvoices.filter(i => ['sent', 'draft', 'partial'].includes(i.status)).length;
+    const overdueInvoices = rangeInvoices.filter(i => i.status === 'overdue').length;
 
-    const chartData = monthly.map(m => ({
-      label: `${m._id.year}-${String(m._id.month).padStart(2, '0')}`,
-      value: m.present,
-    }));
+    // List = ALL invoices
+    const list = await Invoice.find({})
+      .select('invoiceNumber clientName total paidAmount remainingAmount status dueDate createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({
       success: true,
       data: {
-        summary: { totalRecords: total, present, absent, late, attendanceRate: total > 0 ? Math.round((present / total) * 100) : 0 },
-        chartData,
-      }
+        summary: { totalRevenue, totalCollected, totalPending, paidInvoices, pendingInvoices, overdueInvoices },
+        list,
+      },
     });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// GET /api/reports/leave
-router.get('/leave', authenticate, authorize(...adminRoles), async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      data: {
-        summary: { totalApplications: 0, approved: 0, pending: 0, rejected: 0 },
-        chartData: [],
-      }
-    });
-  } catch (e) {
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-// GET /api/reports/projects
-router.get('/projects', authenticate, authorize(...adminRoles), async (req, res) => {
+// ── ATTENDANCE — list = date-filtered (makes sense for attendance) ────────────
+router.get('/attendance', authenticate, async (req, res) => {
   try {
     const { from, to } = req.query;
     const { start, end } = dateRange(from, to);
 
-    const total = await Project.countDocuments();
-    const active = await Project.countDocuments({ status: 'in_progress' });
-    const completed = await Project.countDocuments({ status: 'completed' });
-    const onHold = await Project.countDocuments({ status: 'on_hold' });
-
-    const byStatus = await Project.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
+    const [total, present, absent, late, halfDay] = await Promise.all([
+      Attendance.countDocuments({ date: { $gte: start, $lte: end } }),
+      Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'present' }),
+      Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'absent' }),
+      Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'late' }),
+      Attendance.countDocuments({ date: { $gte: start, $lte: end }, status: 'half_day' }),
     ]);
 
-    const chartData = byStatus.map(s => ({ label: s._id, value: s.count }));
+    const list = await Attendance.find({ date: { $gte: start, $lte: end } })
+      .populate('employee', 'name email')
+      .sort({ date: -1 })
+      .limit(500)
+      .lean();
 
     res.json({
       success: true,
       data: {
-        summary: { total, active, completed, onHold },
-        chartData,
-      }
+        summary: {
+          totalRecords: total, present, absent, late, halfDay,
+          attendanceRate: total > 0 ? Math.round((present / total) * 100) : 0,
+        },
+        list,
+      },
     });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// GET /api/reports/support
-router.get('/support', authenticate, authorize(...adminRoles), async (req, res) => {
+// ── LEAVE ─────────────────────────────────────────────────────────────────────
+router.get('/leave', authenticate, async (req, res) => {
   try {
+    const { from, to } = req.query;
+    const { start, end } = dateRange(from, to);
+
+    const inRange = await Leave.find({ createdAt: { $gte: start, $lte: end } }).sort({ createdAt: -1 }).lean();
+    const displayList = inRange.length > 0 ? inRange : await Leave.find({}).sort({ createdAt: -1 }).lean();
+
+    const approved = displayList.filter(l => l.status === 'approved').length;
+    const pending  = displayList.filter(l => l.status === 'pending').length;
+    const rejected = displayList.filter(l => l.status === 'rejected').length;
+
     res.json({
       success: true,
       data: {
-        summary: { totalTickets: 0, open: 0, resolved: 0, avgResolutionTime: 0 },
-        chartData: [],
-      }
+        summary: { totalApplications: displayList.length, approved, pending, rejected },
+        list: displayList,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── PROJECTS — list = ALL projects ────────────────────────────────────────────
+router.get('/projects', authenticate, async (req, res) => {
+  try {
+    const [total, active, completed, onHold, planning, cancelled] = await Promise.all([
+      Project.countDocuments(),
+      Project.countDocuments({ status: 'in_progress' }),
+      Project.countDocuments({ status: 'completed' }),
+      Project.countDocuments({ status: 'on_hold' }),
+      Project.countDocuments({ status: 'planning' }),
+      Project.countDocuments({ status: 'cancelled' }),
+    ]);
+
+    const list = await Project.find({})
+      .populate('client', 'name company')
+      .select('name status priority startDate endDate progress budget createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        summary: { total, active, completed, onHold, planning, cancelled },
+        list,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── SUPPORT ───────────────────────────────────────────────────────────────────
+router.get('/support', authenticate, async (req, res) => {
+  try {
+    const list = await Ticket.find({}).sort({ createdAt: -1 }).lean();
+    const open       = list.filter(t => t.status === 'open').length;
+    const inProgress = list.filter(t => t.status === 'in_progress').length;
+    const resolved   = list.filter(t => t.status === 'resolved').length;
+    const closed     = list.filter(t => t.status === 'closed').length;
+
+    res.json({
+      success: true,
+      data: {
+        summary: { totalTickets: list.length, open, inProgress, resolved, closed },
+        list,
+      },
     });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });

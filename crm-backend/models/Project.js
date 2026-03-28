@@ -126,6 +126,10 @@ const projectSchema = new mongoose.Schema({
     scopeOfWork:  { filename: String, path: String, originalName: String },
     otherDoc:     { filename: String, path: String, originalName: String },
   },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true
 });

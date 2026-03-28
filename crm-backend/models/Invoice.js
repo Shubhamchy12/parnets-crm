@@ -45,12 +45,25 @@ const invoiceSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-invoiceSchema.pre('save', async function (next) {
-  if (!this.invoiceNumber) {
-    const count = await mongoose.model('Invoice').countDocuments();
-    this.invoiceNumber = `INV-${String(count + 1001).padStart(4, '0')}`;
+invoiceSchema.statics.generateInvoiceNumber = async function () {
+  const MAX_RETRIES = 10;
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    const last = await this.findOne(
+      { invoiceNumber: { $regex: /^INV-\d+$/ } },
+      { invoiceNumber: 1 },
+      { sort: { invoiceNumber: -1 } }
+    ).lean();
+
+    const lastNum = last
+      ? parseInt(last.invoiceNumber.replace('INV-', ''), 10)
+      : 1000;
+
+    const candidate = `INV-${String(lastNum + 1).padStart(4, '0')}`;
+
+    const exists = await this.exists({ invoiceNumber: candidate });
+    if (!exists) return candidate;
   }
-  next();
-});
+  return `INV-${Date.now()}`;
+};
 
 export default mongoose.model('Invoice', invoiceSchema);

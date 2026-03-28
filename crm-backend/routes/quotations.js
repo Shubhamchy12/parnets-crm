@@ -51,7 +51,8 @@ router.get('/', authenticate, async (req, res) => {
 
     res.json({ success: true, data: { quotations, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('GET /api/quotations error:', e);
+    res.status(500).json({ success: false, message: e.message || 'Server error' });
   }
 });
 
@@ -69,7 +70,11 @@ router.post('/', authenticate, authorize(...ADMIN_SALES),
 
       const { servicesTotal, subtotal, cgst, sgst, grandTotal } = calcTotals(services, developmentBudget);
 
+      // Generate unique quotation number before insert
+      const quotationNumber = await Quotation.generateQuotationNumber();
+
       const quotation = await Quotation.create({
+        quotationNumber,
         project,
         client: proj.client,
         totalBudget: Number(totalBudget) || 0,
@@ -88,10 +93,13 @@ router.post('/', authenticate, authorize(...ADMIN_SALES),
       });
 
       const populated = await populatedQuotation(quotation._id);
-      res.status(201).json({ success: true, message: 'Quotation created', data: { quotation: populated } });
+      res.status(201).json({ success: true, message: 'Quotation created successfully', data: { quotation: populated } });
     } catch (e) {
       console.error('Create quotation error:', e);
-      res.status(500).json({ success: false, message: e.message || 'Server error' });
+      if (e.code === 11000) {
+        return res.status(400).json({ success: false, message: 'Quotation number already exists. Please try again.' });
+      }
+      res.status(500).json({ success: false, message: 'Something went wrong' });
     }
   }
 );

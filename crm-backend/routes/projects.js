@@ -41,7 +41,7 @@ function fileInfo(f) {
 }
 
 // POST /api/projects/create — multipart/form-data
-router.post('/create', authenticate, authorize('super_admin', 'admin', 'sub_admin', 'manager'),
+router.post('/create', authenticate, authorize('super_admin', 'admin', 'sub_admin', 'manager', 'sales', 'employee'),
   projectFields,
   logActivity('Project creation', 'project', 'medium'),
   async (req, res) => {
@@ -99,15 +99,11 @@ router.get('/', authenticate, async (req, res) => {
     }
     if (status) query.status = status;
     if (priority) query.priority = priority;
-    if (!ADMIN_ROLES.includes(req.user.role)) {
-      const memberFilter = [{ projectManager: req.user._id }, { 'teamMembers.user': req.user._id }];
-      query.$and = query.$or ? [{ $or: query.$or }, { $or: memberFilter }] : [{ $or: memberFilter }];
-      delete query.$or;
-    }
     const projects = await Project.find(query)
       .populate({ path: 'client', select: 'name company', options: { strictPopulate: false } })
       .populate({ path: 'projectManager', select: 'name email', options: { strictPopulate: false } })
       .populate({ path: 'teamMembers.user', select: 'name email', options: { strictPopulate: false } })
+      .populate({ path: 'createdBy', select: 'name email', options: { strictPopulate: false } })
       .sort({ createdAt: -1 }).limit(limit * 1).skip((page - 1) * limit);
     const total = await Project.countDocuments(query);
     res.json({ success: true, data: { projects, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
@@ -118,13 +114,14 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // POST /api/projects
-router.post('/', authenticate, authorize('super_admin', 'admin', 'sub_admin', 'manager'), logActivity('Project creation', 'project', 'medium'), async (req, res) => {
+router.post('/', authenticate, authorize('super_admin', 'admin', 'sub_admin', 'manager', 'sales', 'employee'), logActivity('Project creation', 'project', 'medium'), async (req, res) => {
   try {
     const body = { ...req.body };
     // Normalize flat budget number → { estimated }
     if (body.budget !== undefined && typeof body.budget !== 'object') {
       body.budget = { estimated: Number(body.budget) || 0 };
     }
+    body.createdBy = req.user._id;
     const project = new Project(body);
     await project.save();
     const populated = await Project.findById(project._id)

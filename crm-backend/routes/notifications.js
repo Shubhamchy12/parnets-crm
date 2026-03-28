@@ -20,21 +20,21 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/notifications/:id/read
-router.put('/:id/read', authenticate, async (req, res) => {
+// PUT /api/notifications/read-all — must be before /:id/read to avoid param conflict
+router.put('/read-all', authenticate, async (req, res) => {
   try {
-    await Notification.findOneAndUpdate({ _id: req.params.id, recipient: req.user._id }, { read: true });
-    res.json({ success: true });
+    await Notification.updateMany({ recipient: req.user._id, read: false }, { read: true });
+    res.json({ success: true, message: 'All marked as read' });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// PUT /api/notifications/read-all
-router.put('/read-all', authenticate, async (req, res) => {
+// PUT /api/notifications/:id/read
+router.put('/:id/read', authenticate, async (req, res) => {
   try {
-    await Notification.updateMany({ recipient: req.user._id, read: false }, { read: true });
-    res.json({ success: true, message: 'All marked as read' });
+    await Notification.findOneAndUpdate({ _id: req.params.id, recipient: req.user._id }, { read: true });
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

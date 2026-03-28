@@ -107,7 +107,8 @@ const userSchema = new mongoose.Schema({
   designation: String,
   salary: Number,
   joiningDate: { type: Date, default: Date.now },
-  facePhoto: { type: String, select: false }, // base64 selfie for attendance matching
+  facePhoto: { type: String, select: false }, // base64 preview photo
+  faceDescriptor: { type: String, select: false }, // JSON array of 128-d face embedding
   address: {
     street: String,
     city: String,

@@ -1,34 +1,29 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
+import Ticket from '../models/Ticket.js';
 
 const router = express.Router();
-
-let tickets = [];
-let ticketCounter = 1000;
-
-function nextTicketNumber() {
-  return `TKT-${++ticketCounter}`;
-}
 
 // GET /api/tickets
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, priority } = req.query;
-    let result = [...tickets];
+    const { page = 1, limit = 20, status, priority, all } = req.query;
+    const isAdmin = ['super_admin', 'admin', 'support_executive', 'manager'].includes(req.user.role);
 
-    // Non-admins only see their own tickets
-    if (!['super_admin', 'admin', 'support_executive'].includes(req.user.role)) {
-      result = result.filter(t => t.raisedBy === req.user._id.toString());
-    }
+    const filter = {};
+    if (!isAdmin && all !== 'true') filter.raisedBy = req.user._id;
+    if (status)   filter.status   = status;
+    if (priority) filter.priority = priority;
 
-    if (status) result = result.filter(t => t.status === status);
-    if (priority) result = result.filter(t => t.priority === priority);
+    const total   = await Ticket.countDocuments(filter);
+    const tickets = await Ticket.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit)
+      .lean();
 
-    const total = result.length;
-    const paginated = result.slice((page - 1) * limit, page * limit);
-
-    res.json({ success: true, data: { tickets: paginated, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
+    res.json({ success: true, data: { tickets, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -38,21 +33,14 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, logActivity('Ticket created', 'ticket', 'medium'), async (req, res) => {
   try {
     const { subject, description, priority = 'medium', category } = req.body;
-    if (!subject || !description) {
+    if (!subject || !description)
       return res.status(400).json({ success: false, message: 'Subject and description are required' });
-    }
-    const ticket = {
-      _id: String(ticketCounter + 1),
-      ticketNumber: nextTicketNumber(),
+
+    const ticket = await Ticket.create({
       subject, description, priority, category,
-      status: 'open',
-      replies: [],
-      raisedBy: req.user._id.toString(),
+      raisedBy: req.user._id,
       raisedByName: req.user.name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    tickets.push(ticket);
+    });
     res.status(201).json({ success: true, message: 'Ticket created', data: { ticket } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -61,44 +49,57 @@ router.post('/', authenticate, logActivity('Ticket created', 'ticket', 'medium')
 
 // GET /api/tickets/:id
 router.get('/:id', authenticate, async (req, res) => {
-  const ticket = tickets.find(t => t._id === req.params.id);
-  if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
-  res.json({ success: true, data: { ticket } });
+  try {
+    const ticket = await Ticket.findById(req.params.id).lean();
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.json({ success: true, data: { ticket } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // PUT /api/tickets/:id
 router.put('/:id', authenticate, logActivity('Ticket updated', 'ticket', 'medium'), async (req, res) => {
-  const idx = tickets.findIndex(t => t._id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: 'Ticket not found' });
-  tickets[idx] = { ...tickets[idx], ...req.body, _id: tickets[idx]._id, updatedAt: new Date().toISOString() };
-  res.json({ success: true, message: 'Ticket updated', data: { ticket: tickets[idx] } });
+  try {
+    const ticket = await Ticket.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.json({ success: true, message: 'Ticket updated', data: { ticket } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // DELETE /api/tickets/:id
 router.delete('/:id', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
-  const idx = tickets.findIndex(t => t._id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: 'Ticket not found' });
-  tickets.splice(idx, 1);
-  res.json({ success: true, message: 'Ticket deleted' });
+  try {
+    const ticket = await Ticket.findByIdAndDelete(req.params.id);
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.json({ success: true, message: 'Ticket deleted' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // POST /api/tickets/:id/replies
 router.post('/:id/replies', authenticate, async (req, res) => {
-  const ticket = tickets.find(t => t._id === req.params.id);
-  if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
-  const reply = {
-    _id: String(Date.now()),
-    message: req.body.message,
-    author: { _id: req.user._id, name: req.user.name, role: req.user.role },
-    createdAt: new Date().toISOString(),
-  };
-  ticket.replies.push(reply);
-  ticket.updatedAt = new Date().toISOString();
-  // Auto-set to in_progress when support replies
-  if (['super_admin', 'admin', 'support_executive'].includes(req.user.role) && ticket.status === 'open') {
-    ticket.status = 'in_progress';
+  try {
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
+
+    const reply = {
+      message: req.body.message,
+      author: { _id: req.user._id, name: req.user.name, role: req.user.role },
+    };
+    ticket.replies.push(reply);
+
+    if (['super_admin', 'admin', 'support_executive'].includes(req.user.role) && ticket.status === 'open') {
+      ticket.status = 'in_progress';
+    }
+    await ticket.save();
+    res.json({ success: true, data: { reply: ticket.replies[ticket.replies.length - 1] } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
-  res.json({ success: true, data: { reply } });
 });
 
 export default router;

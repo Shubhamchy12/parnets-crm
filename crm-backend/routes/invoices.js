@@ -89,14 +89,16 @@ router.post('/', authenticate, authorize('super_admin', 'admin', 'sales'),
       const alreadyPaid = Number(totalPaidSoFar) || 0;
       const remainingAmount = Math.max(0, totalBudget - alreadyPaid - thisPaid);
 
-      // Resolve clientName from DB if not provided
       let resolvedClientName = clientName;
       if (!resolvedClientName && client) {
         const c = await Client.findById(client).select('name').lean();
         resolvedClientName = c?.name || '';
       }
 
+      const invoiceNumber = await Invoice.generateInvoiceNumber();
+
       const invoice = await Invoice.create({
+        invoiceNumber,
         client: client || undefined,
         clientName: resolvedClientName || '',
         clientAddress: clientAddress || '',
@@ -124,10 +126,13 @@ router.post('/', authenticate, authorize('super_admin', 'admin', 'sales'),
         createdBy: req.user._id,
       });
 
-      res.status(201).json({ success: true, message: 'Invoice created', data: { invoice } });
+      res.status(201).json({ success: true, message: 'Invoice created successfully', data: { invoice } });
     } catch (e) {
       console.error('Create invoice error:', e);
-      res.status(500).json({ success: false, message: 'Server error' });
+      if (e.code === 11000) {
+        return res.status(400).json({ success: false, message: 'Invoice number already exists. Please try again.' });
+      }
+      res.status(500).json({ success: false, message: 'Something went wrong' });
     }
   }
 );
