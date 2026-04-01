@@ -7,7 +7,7 @@ import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
-import { Plus } from 'lucide-react';
+import { Plus, FileDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatINR } from '../utils/currency';
 
@@ -40,10 +40,19 @@ const Quotations = () => {
       </div>
     )},
     {
-      key: '_id', label: 'Actions', sortable: false, render: (v) => (
+      key: '_id', label: 'Actions', sortable: false, render: (v, row) => (
         <div className="flex items-center gap-2">
           <button onClick={e => { e.stopPropagation(); navigate(`/quotations/${v}`); }} className="text-xs text-indigo-600 hover:underline">View</button>
           <button onClick={e => { e.stopPropagation(); navigate(`/quotations/${v}/edit`); }} className="text-xs text-amber-600 hover:underline">Edit</button>
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              quotationService.downloadPdf(v, `quotation-${row.quotationNumber || v}.pdf`).catch(() => toast.error('PDF failed'));
+            }}
+            className="flex items-center gap-0.5 text-xs text-emerald-600 hover:underline"
+          >
+             PDF
+          </button>
           <button onClick={e => { e.stopPropagation(); setDeleteId(v); }} className="text-xs text-red-500 hover:underline">Delete</button>
         </div>
       )

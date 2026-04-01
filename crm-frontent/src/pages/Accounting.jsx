@@ -50,14 +50,13 @@ const Accounting = () => {
     try {
       setLoading(true);
       const response = await api.get('/accounting/transactions');
-      if (response.success) {
-        setTransactions(response.data.transactions || []);
+      if (response.data?.success) {
+        setTransactions(response.data.data?.transactions || []);
       } else {
         setTransactions([]);
       }
     } catch (err) {
       console.error('Error loading transactions:', err);
-      toast.error('Failed to load transactions');
       setTransactions([]);
     } finally {
       setLoading(false);
@@ -76,11 +75,9 @@ const Accounting = () => {
     e.preventDefault();
     try {
       if (selectedTransaction) {
-        // Update transaction
-        console.log('Updating transaction:', formData);
+        await api.put(`/accounting/transactions/${selectedTransaction._id}`, formData);
       } else {
-        // Create new transaction
-        console.log('Creating transaction:', formData);
+        await api.post('/accounting/transactions', formData);
       }
       setShowModal(false);
       resetForm();
@@ -121,17 +118,19 @@ const Accounting = () => {
   };
 
   const filteredTransactions = transactions.filter(transaction => {
-    const matchesSearch = transaction.transactionId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (transaction.clientName && transaction.clientName.toLowerCase().includes(searchTerm.toLowerCase()));
+    const id = (transaction.transactionId || transaction._id || '').toLowerCase();
+    const desc = (transaction.description || '').toLowerCase();
+    const client = (transaction.clientName || '').toLowerCase();
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = id.includes(term) || desc.includes(term) || client.includes(term);
     const matchesType = typeFilter === '' || transaction.type === typeFilter;
     const matchesCategory = categoryFilter === '' || transaction.category === categoryFilter;
     return matchesSearch && matchesType && matchesCategory;
   });
 
   // Calculate totals
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + (t.amount || 0), 0);
+  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + (t.amount || 0), 0);
   const netProfit = totalIncome - totalExpenses;
   const totalTax = transactions.reduce((sum, t) => sum + (t.taxAmount || 0), 0);
 
@@ -310,8 +309,8 @@ const Accounting = () => {
                       <div className="flex items-center">
                         <FileText className="h-5 w-5 text-gray-400 mr-2" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{transaction.transactionId}</div>
-                          <div className="text-sm text-gray-500 max-w-xs truncate">{transaction.description}</div>
+                          <div className="text-sm font-medium text-gray-900">{transaction.transactionId || transaction._id?.slice(-8)}</div>
+                          <div className="text-sm text-gray-500 max-w-xs truncate">{transaction.description || '—'}</div>
                         </div>
                       </div>
                     </td>
@@ -324,15 +323,15 @@ const Accounting = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.category.replace('_', ' ').toUpperCase()}
+                      {(transaction.category || '').replace(/_/g, ' ').toUpperCase()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        ₹{transaction.amount.toLocaleString()}
+                        ₹{(transaction.amount || 0).toLocaleString()}
                       </div>
-                      {transaction.taxAmount > 0 && (
+                      {(transaction.taxAmount || 0) > 0 && (
                         <div className="text-sm text-gray-500">
-                          Tax: ₹{transaction.taxAmount.toLocaleString()}
+                          Tax: ₹{(transaction.taxAmount || 0).toLocaleString()}
                         </div>
                       )}
                     </td>
@@ -341,7 +340,7 @@ const Accounting = () => {
                       <div className="text-sm text-gray-500">{transaction.projectName || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {transaction.date ? new Date(transaction.date).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
@@ -438,6 +437,9 @@ const Accounting = () => {
                     value={formData.amount}
                     onChange={handleInputChange}
                     className="input-field"
+                    min="0"
+                    step="any"
+                    placeholder="0"
                     required
                   />
                 </div>

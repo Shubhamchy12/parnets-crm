@@ -9,7 +9,7 @@ import StatusBadge from '../components/common/StatusBadge';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Modal from '../components/common/Modal';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Plus, Trash2, FolderOpen, Star, Phone, Mail, Briefcase, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, FolderOpen, Star, Phone, Mail, Briefcase, X, Printer } from 'lucide-react';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { format } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,6 +39,7 @@ const ClientDetail = () => {
   const [note, setNote] = useState('');
   const [contactModal, setContactModal] = useState(false);
   const [projectModal, setProjectModal] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [contactForm, setContactForm] = useState({ name: '', designation: '', email: '', phone: '', isPrimary: false });
   const [projectForm, setProjectForm] = useState({
     name: '', description: '', projectType: 'web_development', status: 'planning',
@@ -105,6 +106,14 @@ const ClientDetail = () => {
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to create project'),
   });
 
+  const handlePrint = () => {
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 100);
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
@@ -114,12 +123,27 @@ const ClientDetail = () => {
   if (!data) return <div className="p-8 text-center text-slate-500">Client not found.</div>;
 
   return (
-    <div>
+    <>
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-area, #printable-area * { visibility: visible; }
+          #printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+          .crm-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
+      
+      <div>
       <PageHeader
         title={data.name}
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Clients', href: '/clients' }, { label: data.name }]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 no-print">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+              <Printer className="w-4 h-4" /> Print
+            </button>
             <button onClick={() => navigate('/clients')}
               className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl transition-colors modal-btn-secondary">
               <ArrowLeft className="w-4 h-4" /> Back
@@ -139,6 +163,45 @@ const ClientDetail = () => {
           </div>
         }
       />
+
+      {/* Printable Area */}
+      <div id="printable-area">
+        {/* Print Header - Only visible when printing */}
+        {isPrinting && (
+          <div className="mb-8 pb-6 border-b-2 border-gray-300">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Client Report</h1>
+                <p className="text-lg text-gray-600 mb-4">{data.name}</p>
+                <div className="text-sm text-gray-500">
+                  Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}
+                </div>
+              </div>
+              <div className="text-right">
+                {/* Logo */}
+                <div className="mb-3">
+                  <img 
+                    src="/logo.jpg" 
+                    alt="ParNets Logo" 
+                    className="h-16 ml-auto"
+                  />
+                </div>
+                {/* Company Details */}
+                <div className="text-sm text-gray-600">
+                  <div className="font-bold text-lg text-gray-900 mb-2">ParNets Software India Pvt Ltd</div>
+                  <div className="leading-relaxed">
+                    <div>So104/1/50, Singapura Main Rd,</div>
+                    <div>Singapura Village, Varadharaja Nagar,</div>
+                    <div>Vidyaranyapura, Bengaluru,</div>
+                    <div>Karnataka 560097</div>
+                    <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                    <div className="text-indigo-600">hello@parnetsgroup.com</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Main info */}
@@ -271,6 +334,7 @@ const ClientDetail = () => {
             )) : <p className="text-sm" style={{ color: 'var(--text-3)' }}>No notes yet.</p>}
           </div>
         </div>
+      </div>
       </div>
 
       {/* Add Contact Modal */}
@@ -439,6 +503,7 @@ const ClientDetail = () => {
 
       <ConfirmDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => deleteMut.mutate()} loading={deleteMut.isPending} title="Delete this client?" message="This action cannot be undone." />
     </div>
+    </>
   );
 };
 

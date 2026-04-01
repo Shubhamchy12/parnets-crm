@@ -27,7 +27,10 @@ export const invoiceService = {
   recordPayment: (id, data) => api.post(`/invoices/${id}/payment`, data),
   sendEmail: (id) => api.post(`/invoices/${id}/send-email`),
   sendWhatsApp: (id) => api.post(`/invoices/${id}/send-whatsapp`),
-  getApprovedQuotations: () => api.get('/quotations', { params: { status: 'approved', limit: 200 } }),
+  getApprovedQuotations: () => api.get('/invoices/approved-quotations'),
+  createInstallmentPlan: (id, data) => api.post(`/invoices/${id}/installment-plan`, data),
+  updateInstallment: (id, installmentId, data) => api.put(`/invoices/${id}/installment-plan/${installmentId}`, data),
+  removeInstallmentPlan: (id) => api.delete(`/invoices/${id}/installment-plan`),
   downloadPdf,
   viewPdf,
 };

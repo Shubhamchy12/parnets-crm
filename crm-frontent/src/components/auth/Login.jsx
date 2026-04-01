@@ -195,8 +195,8 @@ const Login = () => {
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                   style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>N</div>
                 <div>
-                  <p className="text-white text-xs font-semibold">Naveen Tiwary</p>
-                  <p className="text-slate-500 text-xs">CEO & Founder</p>
+                  <p className="text-white text-xs font-semibold">Nabeen Tiwary</p>
+                  <p className="text-slate-500 text-xs">Managing Director</p>
                 </div>
               </div>
             </div>
@@ -263,13 +263,13 @@ const Login = () => {
                   </button>
                 </form>
 
-                <div className="mt-6 rounded-xl p-4" style={{ background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
+                {/* <div className="mt-6 rounded-xl p-4" style={{ background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Demo Access</p>
                   <div className="space-y-1">
                     <p className="text-xs text-slate-600 font-mono">admin@crm.com / admin123</p>
                     <p className="text-xs text-slate-400 font-mono">manager@crm.com / manager123</p>
                   </div>
-                </div>
+                </div> */}
               </>
             ) : (
               <>

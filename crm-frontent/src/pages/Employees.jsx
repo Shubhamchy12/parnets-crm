@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { employeeService } from '../services/employeeService';
+import { departmentService } from '../services/departmentService';
 import PageHeader from '../components/common/PageHeader';
 import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
 const Employees = () => {
@@ -20,8 +22,14 @@ const Employees = () => {
 
   const { data, isLoading } = useQuery({
     queryKey: ['employees', search, dept],
-    queryFn: () => employeeService.getAll({ search, department: dept }).then(r => r.data),
+    queryFn: () => employeeService.getAll({ search, department: dept, limit: 200 }).then(r => r.data),
   });
+
+  const { data: deptData } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentService.getAll().then(r => r.data?.data?.departments || []),
+  });
+  const departments = deptData || [];
 
   const deleteMut = useMutation({
     mutationFn: (id) => employeeService.remove(id),
@@ -49,6 +57,7 @@ const Employees = () => {
     { key: 'department', label: 'Department', render: (v) => v || '—' },
     { key: 'designation', label: 'Designation', render: (v) => v || '—' },
     { key: 'phone', label: 'Phone', render: (v) => v || '—' },
+    { key: 'joiningDate', label: 'Joining Date', render: (v) => v ? format(new Date(v), 'dd MMM yyyy') : '—' },
     { key: 'status', label: 'Status', render: (v) => <StatusBadge status={v || 'active'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v, row) => (
       <div className="flex items-center gap-2">
@@ -84,8 +93,8 @@ const Employees = () => {
           <select value={dept} onChange={e => setDept(e.target.value)}
             className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300">
             <option value="">All Departments</option>
-            {['Engineering','Sales','HR','Finance','Support','Operations','Marketing'].map(d => (
-              <option key={d} value={d}>{d}</option>
+            {departments.map(d => (
+              <option key={d._id || d.name} value={d.name}>{d.name}</option>
             ))}
           </select>
         </div>

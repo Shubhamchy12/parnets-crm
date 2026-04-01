@@ -16,11 +16,83 @@ import { RiDeleteBin6Line } from 'react-icons/ri';
 import { format } from 'date-fns';
 import { formatINR } from '../utils/currency';
 
+const DEFAULT_TERMS = `These Terms and Conditions ("Agreement") govern the use of services provided by ParNetsSoftware PVT LTD to the Client. By engaging our services, you agree to abide by this Agreement.
+
+1. Services Offered
+We provide web and mobile app development services, including but not limited to:
+• Website design and development
+• Mobile application design and development
+• Maintenance and support services
+• Integration of third-party APIs
+• UI/UX design services
+
+2. Engagement and Deliverables
+2.1 Scope of Work
+The scope of the project, deliverables, timeline, and pricing will be outlined in a separate agreement or proposal, which forms part of this Agreement.
+
+2.2 Client Responsibilities
+The Client must provide all necessary materials, content, and approvals in a timely manner to avoid project delays.
+
+2.3 Changes in Scope
+Any requests for changes outside the agreed scope of work will be subject to additional costs and an extended timeline.
+
+3. Payment Terms
+3.1 Payment Structure
+Payments will be divided into milestones as agreed in the project proposal.
+
+3.2 Non-refundable Deposits
+Once the Payment is done no refund.
+
+4. Intellectual Property
+4.1 Ownership
+Upon full payment, the Client owns the final deliverables.
+
+4.2 Third-party Materials
+Any third-party assets used will remain subject to their respective licensing agreements.
+
+4.3 Portfolio Usage
+The Company reserves the right to display the project as part of its portfolio unless otherwise agreed in writing.
+
+5. Confidentiality
+Both parties agree to keep confidential any proprietary or sensitive information shared during the project.
+
+6. Warranty and Support
+6.1 Warranty Period
+We offer a warranty for 30 days post-project completion to address any bugs or issues related to the agreed scope.
+
+6.2 Ongoing Support
+Support and maintenance beyond the warranty period will be subject to additional fees.
+
+7. Termination
+7.1 By the Client
+The Client may terminate the project by providing written notice. Any work completed up to the termination date will be billed accordingly.
+
+7.2 By the Company
+We may terminate the project for non-payment or breach of terms.
+
+8. Liability
+The Company is not liable for indirect or consequential damages, including loss of profits, data, or revenue, arising from the use of our services.
+
+9. Governing Law
+This Agreement is governed by the laws of Bengaluru City, Karnataka, and any disputes will be resolved under this jurisdiction.
+
+10. Miscellaneous
+10.1 Force Majeure
+We are not responsible for delays caused by factors beyond our control, such as natural disasters or third-party service failures.
+
+10.2 Entire Agreement
+This document, along with the project proposal, constitutes the entire agreement between the parties.
+
+Contact Information
+For any questions or concerns about this Agreement, contact us at:
+Email: hello@parnetsgroup.com
+Phone: +91 9740016068`;
+
 const EMPTY_FORM = {
   name: '', client: '', startDate: '', endDate: '',
   description: '', budget: '', status: 'planning',
   projectType: 'other', priority: 'medium',
-  technology: '', technicalSolution: '',
+  technology: '', technicalSolution: '', termsAndConditions: DEFAULT_TERMS,
 };
 
 const SectionTitle = ({ children }) => (
@@ -39,77 +111,89 @@ const FilePicker = ({ label, file, onChange }) => {
         {file ? (
           <>
             <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-            <span className="text-xs text-slate-700 truncate flex-1">{file.name}</span>
-            <button type="button" onClick={e => { e.stopPropagation(); onChange(null); }} className="text-slate-400 hover:text-red-500">
-              <X className="w-3.5 h-3.5" />
+            <span className="text-sm text-slate-700 truncate">{file.name}</span>
+            <button onClick={e => { e.stopPropagation(); onChange(null); }}
+              className="ml-auto p-1 hover:bg-slate-100 rounded">
+              <X className="w-3.5 h-3.5 text-slate-400" />
             </button>
           </>
         ) : (
           <>
-            <Upload className="w-4 h-4 text-slate-400 flex-shrink-0" />
-            <span className="text-xs text-slate-400">Click to upload (PDF, JPG, PNG, DOC)</span>
+            <Upload className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-500">Click to upload</span>
           </>
         )}
       </div>
-      <input ref={ref} type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden"
-        onChange={e => onChange(e.target.files?.[0] || null)} />
+      <input ref={ref} type="file" onChange={e => onChange(e.target.files?.[0])} className="hidden"
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
     </div>
   );
 };
 
 const Projects = () => {
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [search, setSearch] = useState('');
+  const queryClient = useQueryClient();
   const [modal, setModal] = useState(false);
+  const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [docs, setDocs] = useState({ agreement: null, scopeOfWork: null, otherDoc: null });
-
-  const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const setDoc = (k, f) => setDocs(p => ({ ...p, [k]: f }));
-
-  const resetForm = () => { setForm({ ...EMPTY_FORM }); setDocs({ agreement: null, scopeOfWork: null, otherDoc: null }); };
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects', search],
-    queryFn: () => projectService.getAll({ search }).then(r => r.data?.data?.projects || r.data?.projects || []),
+    queryFn: () => projectService.getAll({ search }).then(r => r.data?.data?.projects || []),
   });
 
   const { data: clients } = useQuery({
-    queryKey: ['clients-dropdown'],
+    queryKey: ['clients'],
     queryFn: () => clientService.getAll({ limit: 200 }).then(r => r.data?.data?.clients || []),
-    staleTime: 60000,
   });
 
   const createMut = useMutation({
-    mutationFn: (fd) => api.post('/projects/create', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['projects'] });
-      toast.success('Project created');
-      setModal(false); resetForm();
-      const id = res.data?.data?.project?._id;
-      if (id) navigate(`/projects/${id}`);
+    mutationFn: (data) => projectService.create(data, true),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(['projects']);
+      await queryClient.invalidateQueries(['projects-all']);
+      toast.success('Project created successfully');
+      setModal(false);
+      resetForm();
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to create'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to create project'),
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => projectService.remove(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['projects'] }); toast.success('Deleted'); setDeleteId(null); },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to delete'),
+    mutationFn: projectService.remove,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(['projects']);
+      await queryClient.invalidateQueries(['projects-all']);
+      toast.success('Project deleted');
+      setDeleteId(null);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to delete project'),
   });
 
-  const handleSubmit = () => {
-    if (!form.name.trim()) return toast.error('Project name is required');
-    if (!form.client)      return toast.error('Client is required');
-    if (!form.startDate)   return toast.error('Start date is required');
-    if (!form.endDate)     return toast.error('End date is required');
+  const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+  const setDoc = (key, file) => setDocs(prev => ({ ...prev, [key]: file }));
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setDocs({ agreement: null, scopeOfWork: null, otherDoc: null });
+  };
 
-    const fd = new FormData();
-    Object.entries(form).forEach(([k, v]) => { if (v !== '' && v !== undefined) fd.append(k, v); });
-    Object.entries(docs).forEach(([k, f]) => { if (f) fd.append(k, f); });
-    createMut.mutate(fd);
+  const handleSubmit = async () => {
+    if (!form.name || !form.client || !form.startDate || !form.endDate) {
+      return toast.error('Please fill all required fields');
+    }
+
+    const formData = new FormData();
+    Object.entries(form).forEach(([key, value]) => {
+      if (value) formData.append(key, value);
+    });
+
+    if (docs.agreement) formData.append('agreement', docs.agreement);
+    if (docs.scopeOfWork) formData.append('scopeOfWork', docs.scopeOfWork);
+    if (docs.otherDoc) formData.append('otherDoc', docs.otherDoc);
+
+    createMut.mutate(formData);
   };
 
   const columns = [
@@ -180,7 +264,8 @@ const Projects = () => {
                 <Lbl>Project Type</Lbl>
                 <select value={form.projectType} onChange={e => setField('projectType', e.target.value)} className="modal-input">
                   <option value="web_development">Web Development</option>
-                  <option value="mobile_app">Mobile App</option>
+                  <option value="mobile_app">Mobile App</option> 
+                        <option value="mobile_app">Website & Mobile App</option>
                   <option value="design">Design</option>
                   <option value="consulting">Consulting</option>
                   <option value="maintenance">Maintenance</option>
@@ -236,7 +321,6 @@ const Projects = () => {
               </div>
             </div>
           </div>
-
           {/* Technical Solution */}
           <div>
             <SectionTitle>Technical Solution</SectionTitle>
@@ -245,6 +329,16 @@ const Projects = () => {
               placeholder="Describe the technical approach, architecture, or solution for this project..." />
           </div>
 
+          {/* Terms & Conditions */}
+          <div>
+            <SectionTitle>Terms & Conditions</SectionTitle>
+            <textarea value={form.termsAndConditions} onChange={e => setField('termsAndConditions', e.target.value)}
+              rows={6} className="modal-input w-full" style={{ resize: 'vertical' }}
+              placeholder="Enter terms and conditions for this project..." />
+            <p className="text-xs text-slate-400 mt-2">Default terms will be applied if left empty</p>
+          </div>
+
+          {/* Document Uploads */}
           {/* Document Uploads */}
           <div>
             <SectionTitle>Document Uploads</SectionTitle>

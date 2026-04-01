@@ -11,7 +11,11 @@ import api from './api';
 // Attendance fields: employee, date, checkIn.time, checkOut.time, totalHours, status, notes
 
 export const attendanceService = {
-  // Check-in / check-out
+  // Smart swipe — auto-detects in/out, sends location + faceVerified
+  // Body: { location?: { latitude, longitude, address }, faceVerified?: boolean }
+  swipe: (data) => api.post('/attendance/swipe', data),
+
+  // Legacy check-in / check-out (still supported)
   checkIn: (data) => api.post('/attendance/checkin', data),
   checkOut: (data) => api.post('/attendance/checkout', data),
 
@@ -27,6 +31,5 @@ export const attendanceService = {
   // Stats (admin only)
   getStats: (params) => api.get('/attendance/stats', { params }),
 
-  // Override doesn't exist in backend yet — stub
   override: (id, data) => api.put(`/attendance/${id}/override`, data),
 };

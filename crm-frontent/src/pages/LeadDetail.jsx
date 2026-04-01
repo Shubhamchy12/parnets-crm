@@ -6,7 +6,7 @@ import PageHeader from '../components/common/PageHeader';
 import StatusBadge from '../components/common/StatusBadge';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { MdEdit } from 'react-icons/md';
 import { format } from 'date-fns';
@@ -33,6 +33,7 @@ const LeadDetail = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editStage, setEditStage] = useState(false);
   const [stage, setStage] = useState('');
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['lead', id],
@@ -55,6 +56,14 @@ const LeadDetail = () => {
     onError: () => toast.error('Failed to update stage'),
   });
 
+  const handlePrint = () => {
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 100);
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
@@ -64,12 +73,28 @@ const LeadDetail = () => {
   if (!data) return <div className="p-8 text-center text-slate-500">Lead not found.</div>;
 
   return (
-    <div>
+    <>
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-lead-area, #printable-lead-area * { visibility: visible; }
+          #printable-lead-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+          .crm-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
+
+      <div>
       <PageHeader
         title={data.name}
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Leads', href: '/leads' }, { label: data.name }]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap no-print">
+            <button onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+              <Printer className="w-4 h-4" /> Print
+            </button>
             <button onClick={() => navigate('/leads')}
               className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl transition-colors modal-btn-secondary">
               <ArrowLeft className="w-4 h-4" /> Back
@@ -82,12 +107,49 @@ const LeadDetail = () => {
         }
       />
 
+      {/* Printable Area */}
+      <div id="printable-lead-area">
+        {/* Print Header - Only visible when printing */}
+        {isPrinting && (
+          <div className="mb-8 pb-6 border-b-2 border-gray-300">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Lead Report</h1>
+                <p className="text-lg text-gray-600 mb-4">{data.name}</p>
+                <div className="text-sm text-gray-500">
+                  Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="mb-3">
+                  <img 
+                    src="/logo.jpg" 
+                    alt="ParNets Logo" 
+                    className="h-16 ml-auto"
+                  />
+                </div>
+                <div className="text-sm text-gray-600">
+                  <div className="font-bold text-lg text-gray-900 mb-2">ParNets Software India Pvt Ltd</div>
+                  <div className="leading-relaxed">
+                    <div>So104/1/50, Singapura Main Rd,</div>
+                    <div>Singapura Village, Varadharaja Nagar,</div>
+                    <div>Vidyaranyapura, Bengaluru,</div>
+                    <div>Karnataka 560097</div>
+                    <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                    <div className="text-indigo-600">hello@parnetsgroup.com</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Main info */}
         <div className="lg:col-span-2 crm-card p-6 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold" style={{ color: 'var(--text-1)' }}>Lead Information</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 no-print">
               {editStage ? (
                 <>
                   <select value={stage} onChange={e => setStage(e.target.value)} className="modal-input text-xs py-1 px-2 h-auto">
@@ -143,9 +205,11 @@ const LeadDetail = () => {
           )}
         </div>
       </div>
+      </div> {/* End printable-area */}
 
       <ConfirmDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => deleteMut.mutate()} loading={deleteMut.isPending} title="Delete this lead?" message="This action cannot be undone." />
     </div>
+    </>
   );
 };
 

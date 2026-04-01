@@ -15,6 +15,8 @@ import Profile from './pages/Profile';
 import Employees from './pages/Employees';
 import EmployeeNew from './pages/EmployeeNew';
 import EmployeeProfile from './pages/EmployeeProfile';
+import EmployeeDetail from './pages/EmployeeDetail';
+import SubEmployeeProfile from './pages/SubEmployeeProfile';
 import EmployeeEdit from './pages/EmployeeEdit';
 import EmployeeDocuments from './pages/EmployeeDocuments';
 import FaceEnrolment from './pages/FaceEnrolment';
@@ -37,11 +39,13 @@ import ProjectDetail from './pages/ProjectDetail';
 import AssignProject from './pages/AssignProject';
 import MyProjects from './pages/MyProjects';
 import Tasks from './pages/Tasks';
+import TaskDetail from './pages/TaskDetail';
 import Timelog from './pages/Timelog';
 import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
 import InvoiceBuilder from './pages/InvoiceBuilder';
 import Contracts from './pages/Contracts';
+import ContractDetail from './pages/ContractDetail';
 import Tickets from './pages/Tickets';
 import TicketDetail from './pages/TicketDetail';
 import Chat from './pages/Chat';
@@ -113,8 +117,8 @@ const AttendanceRoute = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <AuthProvider>
         <Toaster position="top-right" toastOptions={{
           duration: 4000,
           style: { background: '#1e293b', color: '#fff', borderRadius: '12px', fontSize: '14px' },
@@ -156,12 +160,17 @@ function App() {
             <Route path="my-projects" element={<MyProjects />} />
             <Route path="assign-project" element={<RoleRoute roles={ADMIN}><AssignProject /></RoleRoute>} />
             <Route path="tasks" element={<Tasks />} />
+            <Route path="tasks/:id" element={<TaskDetail />} />
             <Route path="timelog" element={<Timelog />} />
+
+            {/* Sub Employee — employee sees own profile */}
+            <Route path="sub-employee" element={<RoleRoute roles={['employee']}><SubEmployeeProfile /></RoleRoute>} />
 
             {/* Employees — admin full CRUD, sales view-only (handled in component) */}
             <Route path="employees" element={<RoleRoute roles={[...ADMIN, 'sales']}><Employees /></RoleRoute>} />
             <Route path="employees/new" element={<RoleRoute roles={ADMIN}><EmployeeNew /></RoleRoute>} />
-            <Route path="employees/:id" element={<RoleRoute roles={[...ADMIN, 'sales']}><EmployeeProfile /></RoleRoute>} />
+            <Route path="employees/:id" element={<RoleRoute roles={[...ADMIN, 'sales']}><EmployeeDetail /></RoleRoute>} />
+            <Route path="employees/:id/profile" element={<RoleRoute roles={[...ADMIN, 'sales']}><EmployeeProfile /></RoleRoute>} />
             <Route path="employees/:id/edit" element={<RoleRoute roles={ADMIN}><EmployeeEdit /></RoleRoute>} />
             <Route path="employees/:id/documents" element={<RoleRoute roles={ADMIN}><EmployeeDocuments /></RoleRoute>} />
             <Route path="employees/:id/enrol-face" element={<RoleRoute roles={ADMIN}><FaceEnrolment /></RoleRoute>} />
@@ -175,6 +184,7 @@ function App() {
             <Route path="invoices/new" element={<RoleRoute roles={SALES}><InvoiceBuilder /></RoleRoute>} />
             <Route path="invoices/:id" element={<RoleRoute roles={SALES}><InvoiceDetail /></RoleRoute>} />
             <Route path="contracts" element={<RoleRoute roles={SALES}><Contracts /></RoleRoute>} />
+            <Route path="contracts/:id" element={<RoleRoute roles={SALES}><ContractDetail /></RoleRoute>} />
 
             {/* Admin only */}
             <Route path="reports" element={<RoleRoute roles={ADMIN}><Reports /></RoleRoute>} />
@@ -199,8 +209,8 @@ function App() {
 
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
-      </Router>
-    </AuthProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 

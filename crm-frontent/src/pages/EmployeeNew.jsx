@@ -7,7 +7,8 @@ import toast from 'react-hot-toast';
 import { useRef, useState, useEffect } from 'react';
 import api from '../services/api';
 import PageHeader from '../components/common/PageHeader';
-import { Camera, CheckCircle, RefreshCw, Eye, EyeOff, Upload, X, FileText } from 'lucide-react';
+import { Eye, EyeOff, Upload, X, FileText } from 'lucide-react';
+import FaceCapture from '../components/common/FaceCapture';
 
 const schema = z.object({
   name:        z.string().min(2, 'Name required'),
@@ -80,14 +81,10 @@ const FilePicker = ({ label, fieldKey, files, onChange }) => {
 const EmployeeNew = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const videoRef = useRef();
-  const canvasRef = useRef();
-  const streamRef = useRef();
 
-  const [streaming, setStreaming] = useState(false);
   const [facePhoto, setFacePhoto] = useState(null);
+  const [faceDescriptor, setFaceDescriptor] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  // doc files: { aadhaar: File|null, pan: File|null, ... }
   const [docFiles, setDocFiles] = useState({
     aadhaar: null, pan: null, education: null,
     experience: null, salarySlip1: null, salarySlip2: null, salarySlip3: null,
@@ -108,45 +105,6 @@ const EmployeeNew = () => {
     defaultValues: { role: 'employee' },
   });
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      streamRef.current = stream;
-      setStreaming(true);
-    } catch {
-      toast.error('Camera access denied');
-    }
-  };
-
-  useEffect(() => {
-    if (streaming && streamRef.current && videoRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-      videoRef.current.play().catch(() => {});
-    }
-  }, [streaming]);
-
-  const stopCamera = () => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    setStreaming(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    setFacePhoto(canvas.toDataURL('image/jpeg', 0.8));
-    stopCamera();
-    toast.success('Photo captured');
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => () => stopCamera(), []);
-
   const mut = useMutation({
     mutationFn: (formData) => api.post('/employees/register', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -161,15 +119,11 @@ const EmployeeNew = () => {
   });
 
   const onSubmit = (data) => {
-    if (!facePhoto) {
-      toast.error('Please capture a face photo for attendance');
-      return;
-    }
     const fd = new FormData();
-    // text fields
     Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== '') fd.append(k, v); });
-    fd.append('facePhoto', facePhoto);
-    // file fields
+    // Only send the descriptor — it's all that's needed for face matching
+    if (faceDescriptor) fd.append('faceDescriptor', JSON.stringify(Array.from(faceDescriptor)));
+    // Skip facePhoto base64 — too large and not needed for matching
     Object.entries(docFiles).forEach(([k, f]) => { if (f) fd.append(k, f); });
     mut.mutate(fd);
   };
@@ -189,40 +143,12 @@ const EmployeeNew = () => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
           {/* ── Face Photo ── */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 flex flex-col items-center gap-4">
-            <p className="text-sm font-semibold text-slate-700">Face Photo for Attendance</p>
-            <div className="w-40 h-40 rounded-full overflow-hidden bg-slate-100 border-4 border-indigo-100 shadow-inner flex items-center justify-center">
-              {facePhoto ? (
-                <img src={facePhoto} alt="Face" className="w-full h-full object-cover" />
-              ) : streaming ? (
-                <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-              ) : (
-                <Camera className="w-10 h-10 text-slate-300" />
-              )}
-            </div>
-            <canvas ref={canvasRef} className="hidden" />
-            {facePhoto ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
-                  <CheckCircle className="w-4 h-4" /> Photo captured
-                </div>
-                <button type="button" onClick={() => { setFacePhoto(null); startCamera(); }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors">
-                  <RefreshCw className="w-3.5 h-3.5" /> Retake
-                </button>
-              </div>
-            ) : streaming ? (
-              <button type="button" onClick={capturePhoto}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium">
-                <Camera className="w-4 h-4" /> Capture Photo
-              </button>
-            ) : (
-              <button type="button" onClick={startCamera}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors font-medium">
-                <Camera className="w-4 h-4" /> Open Camera
-              </button>
-            )}
-            <p className="text-xs text-slate-400 text-center">Used to verify identity during attendance check-in/out</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <FaceCapture
+              onCapture={(descriptor, photo) => { setFaceDescriptor(descriptor); setFacePhoto(photo); }}
+              existingPhoto={facePhoto}
+              faceEnrolled={!!faceDescriptor}
+            />
           </div>
 
           {/* ── Employee Details ── */}

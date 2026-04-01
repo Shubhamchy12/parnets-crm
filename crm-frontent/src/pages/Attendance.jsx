@@ -13,7 +13,7 @@ import {
   LogIn,
   LogOut
 } from 'lucide-react';
-import api from '../services/api';
+import { attendanceService } from '../services/attendanceService';
 
 const Attendance = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -30,9 +30,9 @@ const Attendance = () => {
 
   const loadTodayAttendance = async () => {
     try {
-      const response = await api.getTodayAttendance();
-      if (response.success) {
-        setTodayAttendance(response.data.attendance);
+      const response = await attendanceService.getToday();
+      if (response.data?.success) {
+        setTodayAttendance(response.data.data?.attendance);
       }
     } catch (err) {
       console.error('Error loading today attendance:', err);
@@ -42,13 +42,13 @@ const Attendance = () => {
   const handleCheckIn = async () => {
     try {
       setLoading(true);
-      const response = await api.checkIn();
-      if (response.success) {
-        setTodayAttendance(response.data.attendance);
+      const response = await attendanceService.checkIn();
+      if (response.data?.success) {
+        setTodayAttendance(response.data.data?.attendance);
         setError(null);
       }
     } catch (err) {
-      setError('Failed to check in');
+      setError(err.response?.data?.message || 'Failed to check in');
       console.error('Check-in error:', err);
     } finally {
       setLoading(false);
@@ -58,13 +58,13 @@ const Attendance = () => {
   const handleCheckOut = async () => {
     try {
       setLoading(true);
-      const response = await api.checkOut();
-      if (response.success) {
-        setTodayAttendance(response.data.attendance);
+      const response = await attendanceService.checkOut();
+      if (response.data?.success) {
+        setTodayAttendance(response.data.data?.attendance);
         setError(null);
       }
     } catch (err) {
-      setError('Failed to check out');
+      setError(err.response?.data?.message || 'Failed to check out');
       console.error('Check-out error:', err);
     } finally {
       setLoading(false);

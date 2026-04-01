@@ -27,6 +27,9 @@ const QuotationBuilder = () => {
   const [notes, setNotes] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  const [projectStartDate, setProjectStartDate] = useState('');
+  const [selectedInstallments, setSelectedInstallments] = useState('');
+  const [selectedMonths, setSelectedMonths] = useState('');
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects-dropdown'],
@@ -53,6 +56,7 @@ const QuotationBuilder = () => {
       setNotes(existing.notes || '');
       setPaymentTerms(existing.paymentTerms || '');
       setValidUntil(existing.validUntil ? existing.validUntil.slice(0, 10) : '');
+      setProjectStartDate(existing.projectStartDate ? existing.projectStartDate.slice(0, 10) : '');
     }
   }, [existing]);
 
@@ -86,17 +90,104 @@ const QuotationBuilder = () => {
     mutationFn: (data) => isEdit ? quotationService.update(id, data) : quotationService.create(data),
     onSuccess: (res) => {
       qc.invalidateQueries(['quotations']);
-      toast.success(isEdit ? 'Quotation updated' : 'Quotation created');
+      toast.success(isEdit ? 'Quotation updated successfully' : 'Quotation created successfully');
       const qId = res.data?.data?.quotation?._id;
       navigate(qId ? `/quotations/${qId}` : '/quotations');
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+    onError: (e) => {
+      const msg = e.response?.data?.message || 'Something went wrong';
+      toast.error(msg);
+    },
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!projectId) return toast.error('Please select a project');
-    mut.mutate({ project: projectId, developmentBudget, services: selectedServices, notes, paymentTerms, validUntil });
+    mut.mutate({ project: projectId, developmentBudget, services: selectedServices, notes, paymentTerms, validUntil, projectStartDate });
+  };
+
+  // Generate installment schedule with auto dates
+  const generateInstallmentSchedule = (installmentCount, isMonthly = false, totalMonths = null) => {
+    // Auto-generate project start date if not set (today's date)
+    let startDate;
+    if (!projectStartDate) {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10);
+      setProjectStartDate(dateStr);
+      startDate = today;
+    } else {
+      startDate = new Date(projectStartDate);
+    }
+    
+    let schedule = '';
+    let endDate;
+    
+    const formatDate = (date) => {
+      const day = date.getDate();
+      const month = date.toLocaleString('en-US', { month: 'short' });
+      const year = date.getFullYear();
+      return `${day} ${month} ${year}`;
+    };
+    
+    if (totalMonths) {
+      // Distributed installments over total months
+      const monthsPerInstallment = totalMonths / installmentCount;
+      
+      for (let i = 0; i < installmentCount; i++) {
+        const installmentStartMonth = Math.floor(i * monthsPerInstallment);
+        const installmentEndMonth = Math.ceil((i + 1) * monthsPerInstallment);
+        
+        const periodStart = new Date(startDate);
+        periodStart.setMonth(startDate.getMonth() + installmentStartMonth);
+        periodStart.setDate(1);
+        
+        const periodEnd = new Date(startDate);
+        periodEnd.setMonth(startDate.getMonth() + installmentEndMonth);
+        periodEnd.setDate(0); // Last day of previous month
+        
+        endDate = periodEnd;
+        
+        const ordinal = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][i] || `${i + 1}th`;
+        schedule += `${ordinal} Installment (${formatDate(periodStart)} - ${formatDate(periodEnd)}): Payment due\n`;
+      }
+    } else if (isMonthly) {
+      // Monthly installments
+      for (let i = 0; i < installmentCount; i++) {
+        const monthStart = new Date(startDate);
+        monthStart.setMonth(startDate.getMonth() + i);
+        monthStart.setDate(1);
+        
+        const monthEnd = new Date(monthStart);
+        monthEnd.setMonth(monthStart.getMonth() + 1);
+        monthEnd.setDate(0);
+        
+        endDate = monthEnd; // Track last end date
+        
+        const ordinal = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][i] || `${i + 1}th`;
+        schedule += `${ordinal} Installment (${formatDate(monthStart)} - ${formatDate(monthEnd)}): Payment due\n`;
+      }
+    } else {
+      // Stage-based installments (divide project duration equally)
+      const monthsPerInstallment = Math.ceil(installmentCount / 2); // Rough estimate
+      const totalMonthsCalc = installmentCount * monthsPerInstallment;
+      
+      endDate = new Date(startDate);
+      endDate.setMonth(startDate.getMonth() + totalMonthsCalc);
+      
+      const templates = {
+        2: '1st Installment: At project start\n2nd Installment: At project delivery',
+        3: '1st Installment: At project kickoff\n2nd Installment: After design completion\n3rd Installment: At project delivery',
+        4: '1st Installment: At project start\n2nd Installment: After design approval\n3rd Installment: After development completion\nFinal Installment: At project handover'
+      };
+      schedule = templates[installmentCount] || templates[3];
+    }
+    
+    // Auto-set Valid Until (end date)
+    if (endDate) {
+      setValidUntil(endDate.toISOString().slice(0, 10));
+    }
+    
+    return schedule.trim();
   };
 
   return (
@@ -238,27 +329,72 @@ const QuotationBuilder = () => {
         {/* Payment Terms */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Payment Terms</p>
+          
+          {/* Installments over Duration - Two-step selection */}
           <div>
-            <p className="text-xs text-slate-500 mb-2">Quick templates:</p>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: '2 Installments', value: '1st Installment: At project start\n2nd Installment: At project delivery' },
-                { label: '3 Installments', value: '1st Installment: At project kickoff\n2nd Installment: After design completion\n3rd Installment: At project delivery' },
-                { label: '4 Installments', value: '1st Installment: At project start\n2nd Installment: After design approval\n3rd Installment: After development completion\nFinal Installment: At project handover' },
-                { label: 'Milestone-Based', value: 'Initial payment at project kickoff\nSecond payment after first milestone\nThird payment after testing phase\nFinal payment upon project handover' },
-              ].map(t => (
-                <button key={t.label} type="button" onClick={() => setPaymentTerms(t.value)}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors">
-                  {t.label}
-                </button>
-              ))}
+            <p className="text-xs text-slate-500 mb-3">Generate installment schedule</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-slate-600 mb-1.5">Number of Installments</label>
+                <select 
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={selectedInstallments}
+                  onChange={(e) => setSelectedInstallments(e.target.value)}
+                >
+                  <option value="">Select...</option>
+                  <option value="2">2 Installments</option>
+                  <option value="3">3 Installments</option>
+                  <option value="4">4 Installments</option>
+                  <option value="5">5 Installments</option>
+                  <option value="6">6 Installments</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-600 mb-1.5">Total Duration (Months)</label>
+                <select 
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={selectedMonths}
+                  onChange={(e) => setSelectedMonths(e.target.value)}
+                >
+                  <option value="">Select...</option>
+                  <option value="3">3 Months</option>
+                  <option value="6">6 Months</option>
+                  <option value="9">9 Months</option>
+                  <option value="12">12 Months</option>
+                  <option value="18">18 Months</option>
+                  <option value="24">24 Months</option>
+                </select>
+              </div>
             </div>
+            <button 
+              type="button" 
+              onClick={() => {
+                if (!selectedInstallments || !selectedMonths) {
+                  toast.error('Please select both installments and duration');
+                  return;
+                }
+                const schedule = generateInstallmentSchedule(parseInt(selectedInstallments), false, parseInt(selectedMonths));
+                setPaymentTerms(schedule);
+                toast.success(`Generated ${selectedInstallments} installments over ${selectedMonths} months`);
+              }}
+              disabled={!selectedInstallments || !selectedMonths}
+              className="w-full px-4 py-2.5 text-sm font-medium rounded-lg border border-purple-300 bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              Generate Payment Schedule
+            </button>
+            <p className="text-xs text-slate-400 mt-2">
+              {selectedInstallments && selectedMonths ? (
+                <>Distributes {selectedInstallments} installments evenly across {selectedMonths} months (approx. {(parseInt(selectedMonths) / parseInt(selectedInstallments)).toFixed(1)} months per installment)</>
+              ) : (
+                <>Select installments and duration to generate schedule</>
+              )}
+            </p>
           </div>
+         
           <div>
             <Lbl>Payment Terms (Stage-Based)</Lbl>
             <textarea className="modal-input font-mono text-sm" rows={5} value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)}
-              placeholder={'e.g.\n1st Installment: At project start\n2nd Installment: After design completion\n3rd Installment: After development completion\nFinal Installment: At project delivery'} />
-            <p className="text-xs text-slate-400 mt-1.5">Define payment stages based on project milestones, not percentages.</p>
+              placeholder={'e.g.\n1st Installment (1 Jan 2024 - 31 Jan 2024): At project start\n2nd Installment (1 Feb 2024 - 28 Feb 2024): After design completion\n3rd Installment (1 Mar 2024 - 31 Mar 2024): After development completion\nFinal Installment (1 Apr 2024 - 30 Apr 2024): At project delivery'} />
+            <p className="text-xs text-slate-400 mt-1.5">Define payment stages with month ranges based on project milestones.</p>
           </div>
         </div>
 
@@ -266,8 +402,14 @@ const QuotationBuilder = () => {
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Additional Details</p>
           <div>
-            <Lbl>Valid Until</Lbl>
+            <Lbl>Project Start Date</Lbl>
+            <input className="modal-input" type="date" value={projectStartDate} onChange={e => setProjectStartDate(e.target.value)} />
+            <p className="text-xs text-slate-400 mt-1.5">Auto-generated when you select installment templates</p>
+          </div>
+          <div>
+            <Lbl>Valid Until (End Date)</Lbl>
             <input className="modal-input" type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
+            <p className="text-xs text-slate-400 mt-1.5">Auto-calculated based on installment duration</p>
           </div>
           <div>
             <Lbl>Notes</Lbl>

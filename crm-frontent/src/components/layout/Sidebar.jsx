@@ -6,7 +6,7 @@ import {
   Settings, UserCheck, Activity, Calendar,
   Target, ClipboardList, FileSignature, BarChart2,
   UserCog, Building2, PanelLeftClose, PanelLeftOpen,
-  ChevronDown, UserPlus, Briefcase, GitBranch, AlarmClock, UserSquare2,
+  ChevronDown, Briefcase, GitBranch, AlarmClock, UserSquare2,
   Receipt, ShoppingCart, CreditCard, Layers, Puzzle, ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,11 +28,15 @@ const menuGroups = [
   {
     group: 'Employee',
     items: [
-      { name: 'Employee Registration', icon: UserPlus,   path: '/employees/new',   roles: ADMIN },
-      { name: 'Employee Data',         icon: UserCheck,  path: '/employees',       roles: ADMIN },
-      { name: 'Departments',           icon: Layers,        path: '/departments',  roles: ADMIN },      { name: 'Attendance',            icon: Calendar,   path: '/attendance',      roles: ALL_STAFF },
-      { name: 'Leaves',                icon: AlarmClock, path: '/leaves',          roles: ALL_STAFF },
-      { name: 'Leave Approvals',       icon: UserSquare2,path: '/leaves/team',     roles: ADMIN },
+      { name: 'Departments',     icon: Layers,        path: '/departments',    roles: ADMIN },
+      { name: 'Employee Data',   icon: UserCheck,     path: '/employees',      roles: ADMIN },
+   
+      { name: 'Attendance',      icon: Calendar,      path: '/attendance',     roles: ALL_STAFF },
+      { name: 'Leaves',          icon: AlarmClock,    path: '/leaves',         roles: ALL_STAFF },
+      { name: 'Leave Approvals', icon: UserSquare2,   path: '/leaves/team',    roles: ADMIN },
+      { name: 'My Projects',     icon: Briefcase,     path: '/my-projects',    roles: ['employee'] },
+      { name: 'Tasks',           icon: ClipboardList, path: '/tasks',          roles: ['employee'] },
+      { name: 'Time Log',        icon: AlarmClock,    path: '/timelog',        roles: ['employee'] },
     ],
   },
 
@@ -40,14 +44,13 @@ const menuGroups = [
   {
     group: 'Sales',
     items: [
-      { name: 'Clients',   icon: Users,         path: '/clients',      roles: SALES },
-      { name: 'Projects',  icon: FolderOpen,    path: '/projects',     roles: SALES },
-      { name: 'Services / Add-ons', icon: Puzzle, path: '/services',    roles: ADMIN },
-      { name: 'My Projects', icon: Briefcase,   path: '/my-projects',  roles: ['employee'] },
-      { name: 'Leads',     icon: Target,        path: '/leads',        roles: SALES },
-      { name: 'Quotations',icon: ClipboardCheck,path: '/quotations',   roles: SALES },
-      { name: 'Invoices',  icon: CreditCard,    path: '/invoices',     roles: SALES },
-      { name: 'Contracts', icon: FileSignature, path: '/contracts',    roles: SALES },
+      { name: 'Leads',       icon: Target,        path: '/leads',       roles: SALES },
+       { name: 'Clients',     icon: Users,         path: '/clients',     roles: SALES },
+      { name: 'Projects',    icon: FolderOpen,    path: '/projects',    roles: SALES },
+       { name: 'Quotations',  icon: ClipboardCheck,path: '/quotations',  roles: SALES },
+      { name: 'Invoices',    icon: CreditCard,    path: '/invoices',    roles: SALES },
+      { name: 'Services',    icon: Puzzle,        path: '/services',    roles: ADMIN },
+      { name: 'Contracts',   icon: FileSignature, path: '/contracts',   roles: SALES },
     ],
   },
 
@@ -55,9 +58,9 @@ const menuGroups = [
   {
     group: 'Workflow',
     items: [
-      { name: 'Assign Project',   icon: GitBranch,     path: '/assign-project', roles: ADMIN },
-      { name: 'Tasks',            icon: ClipboardList, path: '/tasks',          roles: ALL_STAFF },
-      { name: 'Time Log',         icon: Briefcase,     path: '/timelog',        roles: ALL_STAFF },
+      { name: 'Assign Project', icon: GitBranch,     path: '/assign-project', roles: ADMIN },
+      { name: 'Tasks',          icon: ClipboardList, path: '/tasks',          roles: ['admin', 'super_admin', 'sales'] },
+      { name: 'Time Log',       icon: Briefcase,     path: '/timelog',        roles: ['admin', 'super_admin', 'sales'] },
     ],
   },
 

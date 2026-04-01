@@ -12,7 +12,7 @@ import Avatar from '../components/common/Avatar';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Modal from '../components/common/Modal';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Users, FileText, Calendar, X, Plus, Save, Upload, Download, Clock, AlertTriangle, CheckCircle2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Calendar, X, Plus, Save, Upload, Download, Clock, AlertTriangle, CheckCircle2, MessageSquare, Printer, CalendarDays } from 'lucide-react';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { format, differenceInDays } from 'date-fns';
 import { formatINR } from '../utils/currency';
@@ -49,6 +49,8 @@ const ProjectDetail = () => {
   const [assignModal, setAssignModal] = useState(false);
   const [scopeModal, setScopeModal] = useState(false);
   const [scopeText, setScopeText] = useState('');
+  const [termsModal, setTermsModal] = useState(false);
+  const [termsText, setTermsText] = useState('');
   const [agreementModal, setAgreementModal] = useState(false);
   const [agreementForm, setAgreementForm] = useState({ title: '', url: '' });
   const [milestoneModal, setMilestoneModal] = useState(false);
@@ -57,6 +59,7 @@ const ProjectDetail = () => {
   const [editProgressId, setEditProgressId] = useState(null);
   const [commentModal, setCommentModal] = useState(null); // progressEntry
   const [commentText, setCommentText] = useState('');
+  const [isPrinting, setIsPrinting] = useState(false);
   const [progressForm, setProgressForm] = useState({
     workDone: '', hoursSpent: '', completionPercentage: '', blockers: '', statusUpdate: 'on_track',
   });
@@ -106,6 +109,12 @@ const ProjectDetail = () => {
   const scopeMut = useMutation({
     mutationFn: (scopeOfWork) => projectService.update(id, { scopeOfWork }),
     onSuccess: () => { refetch(); toast.success('Scope saved'); setScopeModal(false); },
+    onError: () => toast.error('Failed to save'),
+  });
+
+  const termsMut = useMutation({
+    mutationFn: (termsAndConditions) => projectService.update(id, { termsAndConditions }),
+    onSuccess: () => { refetch(); toast.success('Terms & Conditions saved'); setTermsModal(false); },
     onError: () => toast.error('Failed to save'),
   });
 
@@ -184,6 +193,14 @@ const ProjectDetail = () => {
   const today = new Date().toISOString().split('T')[0];
   const todayEntry = progressData?.find(e => e.date === today && (e.employee?._id === user?._id || e.employee === user?._id));
 
+  const handlePrint = () => {
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 100);
+  };
+
   if (isLoading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>;
   if (!data) return <div className="p-8 text-center text-slate-500">Project not found.</div>;
 
@@ -193,12 +210,27 @@ const ProjectDetail = () => {
   const employees = empData || [];
 
   return (
-    <div>
+    <>
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-area, #printable-area * { visibility: visible; }
+          #printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+          .crm-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
+      
+      <div>
       <PageHeader
         title={data.name}
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Projects', href: '/projects' }, { label: data.name }]}
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap no-print">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+              <Printer className="w-4 h-4" /> Print
+            </button>
             <button onClick={() => navigate('/projects')} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl transition-colors modal-btn-secondary">
               <ArrowLeft className="w-4 h-4" /> Back
             </button>
@@ -219,6 +251,9 @@ const ProjectDetail = () => {
                 <button onClick={() => { setScopeText(data.scopeOfWork || ''); setScopeModal(true); }} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
                   <FileText className="w-4 h-4" /> Scope
                 </button>
+                <button onClick={() => { setTermsText(data.termsAndConditions || ''); setTermsModal(true); }} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
+                  <FileText className="w-4 h-4" /> Terms
+                </button>
                 <button onClick={() => setDeleteOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
                   <RiDeleteBin6Line size={15} /> Delete
                 </button>
@@ -227,6 +262,45 @@ const ProjectDetail = () => {
           </div>
         }
       />
+
+      {/* Printable Area */}
+      <div id="printable-area">
+        {/* Print Header - Only visible when printing */}
+        {isPrinting && (
+          <div className="mb-8 pb-6 border-b-2 border-gray-300">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Project Report</h1>
+                <p className="text-lg text-gray-600 mb-4">{data.name}</p>
+                <div className="text-sm text-gray-500">
+                  Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}
+                </div>
+              </div>
+              <div className="text-right">
+                {/* Logo */}
+                <div className="mb-3">
+                  <img 
+                    src="/logo.jpg" 
+                    alt="ParNets Logo" 
+                    className="h-16 ml-auto"
+                  />
+                </div>
+                {/* Company Details */}
+                <div className="text-sm text-gray-600">
+                  <div className="font-bold text-lg text-gray-900 mb-2">ParNets Software India Pvt Ltd</div>
+                  <div className="leading-relaxed">
+                    <div>So104/1/50, Singapura Main Rd,</div>
+                    <div>Singapura Village, Varadharaja Nagar,</div>
+                    <div>Vidyaranyapura, Bengaluru,</div>
+                    <div>Karnataka 560097</div>
+                    <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                    <div className="text-indigo-600">hello@parnetsgroup.com</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: main info + progress */}
@@ -363,6 +437,95 @@ const ProjectDetail = () => {
             ) : <p className="text-sm" style={{ color: 'var(--text-3)' }}>No employees assigned yet.</p>}
           </div>
 
+          {/* Day-wise Work Plans */}
+          <div className="crm-card p-6">
+            <h2 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+              <CalendarDays className="w-5 h-5 text-indigo-500" /> Day-wise Work Plans
+            </h2>
+            {assignments?.length > 0 ? (
+              <div className="space-y-6">
+                {assignments.map((assignment) => {
+                  const dayWisePlans = assignment.workPlan?.dayWisePlans || [];
+                  if (dayWisePlans.length === 0) return null;
+                  
+                  return (
+                    <div key={assignment._id} className="border-l-4 border-indigo-300 pl-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Avatar name={assignment.employee?.name || ''} size="sm" />
+                        <div>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{assignment.employee?.name}</p>
+                          <p className="text-xs" style={{ color: 'var(--text-3)' }}>{assignment.employee?.department}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {dayWisePlans.map((plan, idx) => (
+                          <div key={plan._id} className="p-4 rounded-lg border" style={{ background: 'var(--bg-surface2)', borderColor: 'var(--border)' }}>
+                            <div className="flex items-start gap-3">
+                              <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 text-sm font-bold flex items-center justify-center flex-shrink-0">
+                                {idx + 1}
+                              </span>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  <span className="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-50 text-indigo-700">
+                                    {format(new Date(plan.dateFrom), 'dd MMM yyyy')} 
+                                    {plan.dateTo && plan.dateTo !== plan.dateFrom ? ` → ${format(new Date(plan.dateTo), 'dd MMM yyyy')}` : ''}
+                                  </span>
+                                  <span className={`text-xs px-2.5 py-1 rounded-full font-semibold capitalize ${
+                                    plan.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                    plan.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                    plan.status === 'on_hold' ? 'bg-yellow-100 text-yellow-700' :
+                                    plan.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
+                                  }`}>
+                                    {plan.status.replace('_', ' ')}
+                                  </span>
+                                  {plan.updatedAt && (
+                                    <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                                      Updated {format(new Date(plan.updatedAt), 'dd MMM yyyy')}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-1)' }}>{plan.taskDescription}</p>
+                                {plan.developerRemark && (
+                                  <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                                    <p className="text-xs font-semibold text-blue-600 mb-0.5">Developer Remark:</p>
+                                    <p className="text-sm text-blue-900">{plan.developerRemark}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--text-3)' }}>No day-wise plans assigned yet.</p>
+            )}
+          </div>
+
+          {/* Scope of Work - Print Section */}
+          {data.scopeOfWork && (
+            <div className="crm-card p-6">
+              <h2 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                <FileText className="w-4 h-4 text-amber-500" /> Scope of Work
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.scopeOfWork}</p>
+            </div>
+          )}
+
+          {/* Terms & Conditions - Print Section */}
+          {data.termsAndConditions && (
+            <div className="crm-card p-6">
+              <h2 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                <FileText className="w-4 h-4 text-blue-500" /> Terms & Conditions
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.termsAndConditions}</p>
+            </div>
+          )}
+
           {/* Daily Progress Timeline */}
           <div className="crm-card p-6">
             <div className="flex items-center justify-between mb-4">
@@ -431,7 +594,7 @@ const ProjectDetail = () => {
           </div>
         </div>
 
-        {/* Right sidebar: milestones + scope */}
+        {/* Right sidebar: milestones + scope + terms */}
         <div className="space-y-5">
           {data.scopeOfWork && (
             <div className="crm-card p-6">
@@ -439,6 +602,15 @@ const ProjectDetail = () => {
                 <FileText className="w-4 h-4 text-amber-500" /> Scope of Work
               </h2>
               <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.scopeOfWork}</p>
+            </div>
+          )}
+
+          {data.termsAndConditions && (
+            <div className="crm-card p-6">
+              <h2 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                <FileText className="w-4 h-4 text-blue-500" /> Terms & Conditions
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.termsAndConditions}</p>
             </div>
           )}
 
@@ -535,6 +707,21 @@ const ProjectDetail = () => {
               {scopeMut.isPending ? 'Saving...' : 'Save Scope'}
             </button>
             <button onClick={() => setScopeModal(false)} className="px-5 py-2.5 modal-btn-secondary text-sm rounded-xl">Cancel</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Terms & Conditions Modal */}
+      <Modal open={termsModal} onClose={() => setTermsModal(false)} title="Terms & Conditions" size="lg">
+        <div className="space-y-4">
+          <textarea value={termsText} onChange={e => setTermsText(e.target.value)} rows={12} className="modal-input"
+            placeholder="Enter terms and conditions for this project..." style={{ resize: 'vertical' }} />
+          <div className="flex gap-3">
+            <button onClick={() => termsMut.mutate(termsText)} disabled={termsMut.isPending}
+              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50">
+              {termsMut.isPending ? 'Saving...' : 'Save Terms & Conditions'}
+            </button>
+            <button onClick={() => setTermsModal(false)} className="px-5 py-2.5 modal-btn-secondary text-sm rounded-xl">Cancel</button>
           </div>
         </div>
       </Modal>
@@ -650,7 +837,9 @@ const ProjectDetail = () => {
       </Modal>
 
       <ConfirmDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => deleteMut.mutate()} loading={deleteMut.isPending} title="Delete this project?" message="This action cannot be undone." />
-    </div>
+      </div> {/* End printable-area */}
+    </div> {/* End main container */}
+    </>
   );
 };
 

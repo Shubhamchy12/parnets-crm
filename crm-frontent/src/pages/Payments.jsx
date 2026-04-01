@@ -168,8 +168,8 @@ const Payments = () => {
   const loadClients = async () => {
     try {
       const response = await api.get('/clients');
-      if (response.success) {
-        setClients(response.data.clients);
+      if (response.data?.success) {
+        setClients(response.data.data?.clients || []);
       }
     } catch (err) {
       setClients(mockClients);
@@ -179,8 +179,8 @@ const Payments = () => {
   const loadProjects = async () => {
     try {
       const response = await api.get('/projects');
-      if (response.success) {
-        setProjects(response.data.projects);
+      if (response.data?.success) {
+        setProjects(response.data.data?.projects || []);
       }
     } catch (err) {
       setProjects(mockProjects);
@@ -190,8 +190,8 @@ const Payments = () => {
   const loadPayments = async () => {
     try {
       const response = await api.get('/payments');
-      if (response.success) {
-        setPayments(response.data.payments);
+      if (response.data?.success) {
+        setPayments(response.data.data?.payments || []);
       }
     } catch (err) {
       setPayments(mockPayments);
@@ -282,11 +282,9 @@ const Payments = () => {
     e.preventDefault();
     try {
       if (selectedPayment) {
-        // Update payment
-        console.log('Updating payment:', formData);
+        await api.put(`/payments/${selectedPayment._id}`, formData);
       } else {
-        // Create new payment
-        console.log('Creating payment:', formData);
+        await api.post('/payments', formData);
       }
       setShowModal(false);
       resetForm();

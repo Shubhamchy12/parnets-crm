@@ -39,6 +39,7 @@ const Timelog = () => {
   const startTimer = () => { setStartTime(new Date()); setRunning(true); setElapsed(0); };
   const stopTimer = () => {
     setRunning(false);
+    if (elapsed < 60) { toast.error('Minimum 1 minute required'); return; }
     const hours = (elapsed / 3600).toFixed(2);
     logMut.mutate({ hours, startTime, endTime: new Date(), description: 'Timer session' });
   };

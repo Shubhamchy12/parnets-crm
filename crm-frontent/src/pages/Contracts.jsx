@@ -44,9 +44,9 @@ const Contracts = () => {
     { key: 'value', label: 'Value', render: v => v ? formatINR(v) : '—' },
     { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'draft'} /> },
     { key: '_id', label: 'Actions', sortable: false, render: (v) => (
-      <div className="flex gap-2">
-        <button onClick={e => { e.stopPropagation(); navigate(`/contracts/${v}`); }} className="text-xs text-indigo-600 hover:underline">View</button>
-        <button onClick={e => { e.stopPropagation(); setDeleteId(v); }} className="text-xs text-red-500 hover:underline">Delete</button>
+      <div className="flex items-center gap-3">
+        <button onClick={e => { e.stopPropagation(); navigate(`/contracts/${v}`); }} className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium">View</button>
+        <button onClick={e => { e.stopPropagation(); setDeleteId(v); }} className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium">Delete</button>
       </div>
     )},
   ];

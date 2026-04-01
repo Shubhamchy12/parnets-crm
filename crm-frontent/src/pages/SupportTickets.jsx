@@ -20,6 +20,7 @@ import {
   Paperclip
 } from 'lucide-react';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 const SupportTickets = () => {
   const [tickets, setTickets] = useState([]);
@@ -51,14 +52,13 @@ const SupportTickets = () => {
     try {
       setLoading(true);
       const response = await api.get('/tickets');
-      if (response.success) {
-        setTickets(response.data.tickets || []);
+      if (response.data?.success) {
+        setTickets(response.data.data?.tickets || []);
       } else {
         setTickets([]);
       }
     } catch (err) {
       console.error('Error loading tickets:', err);
-      toast.error('Failed to load support tickets');
       setTickets([]);
     } finally {
       setLoading(false);
@@ -77,11 +77,9 @@ const SupportTickets = () => {
     e.preventDefault();
     try {
       if (selectedTicket) {
-        // Update ticket
-        console.log('Updating ticket:', formData);
+        await api.put(`/tickets/${selectedTicket._id}`, formData);
       } else {
-        // Create new ticket
-        console.log('Creating ticket:', formData);
+        await api.post('/tickets', formData);
       }
       setShowModal(false);
       resetForm();

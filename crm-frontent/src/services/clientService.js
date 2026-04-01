@@ -3,7 +3,7 @@ import api from './api';
 export const clientService = {
   getAll: (params) => api.get('/clients', { params }),
   getOne: (id) => api.get(`/clients/${id}`),
-  create: (data) => api.post('/clients', data),
+  create: (data) => api.post('/clients/register', data),
   update: (id, data) => api.put(`/clients/${id}`, data),
   remove: (id) => api.delete(`/clients/${id}`),
   addNote: (id, data) => api.post(`/clients/${id}/notes`, data),

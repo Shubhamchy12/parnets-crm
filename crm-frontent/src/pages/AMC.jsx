@@ -15,6 +15,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 const AMC = () => {
   const [amcContracts, setAmcContracts] = useState([]);
@@ -49,14 +50,13 @@ const AMC = () => {
     try {
       setLoading(true);
       const response = await api.get('/amc');
-      if (response.success) {
-        setAmcContracts(response.data.contracts || []);
+      if (response.data?.success) {
+        setAmcContracts(response.data.data?.contracts || []);
       } else {
         setAmcContracts([]);
       }
     } catch (err) {
       console.error('Error loading AMC contracts:', err);
-      toast.error('Failed to load AMC contracts');
       setAmcContracts([]);
     } finally {
       setLoading(false);
@@ -75,17 +75,16 @@ const AMC = () => {
     e.preventDefault();
     try {
       if (selectedContract) {
-        // Update contract
-        console.log('Updating AMC contract:', formData);
+        await api.put(`/amc/${selectedContract._id}`, formData);
       } else {
-        // Create new contract
-        console.log('Creating AMC contract:', formData);
+        await api.post('/amc', formData);
       }
       setShowModal(false);
       resetForm();
       loadAMCContracts();
     } catch (err) {
       console.error('Error saving AMC contract:', err);
+      toast.error(err.response?.data?.message || 'Failed to save contract');
     }
   };
 
@@ -131,9 +130,10 @@ const AMC = () => {
   };
 
   const filteredContracts = amcContracts.filter(contract => {
-    const matchesSearch = contract.contractNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         contract.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         contract.projectName.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = (contract.contractNumber || '').toLowerCase().includes(term) ||
+                         (contract.clientName || '').toLowerCase().includes(term) ||
+                         (contract.projectName || '').toLowerCase().includes(term);
     const matchesStatus = statusFilter === '' || contract.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -298,14 +298,14 @@ const AMC = () => {
                       <div className="text-sm text-gray-500">{contract.contactPerson}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">₹{contract.amount.toLocaleString()}</div>
-                      <div className="text-sm text-gray-500 capitalize">{contract.serviceType.replace('_', ' ')}</div>
+                      <div className="font-medium text-gray-900">₹{(contract.amount ?? 0).toLocaleString()}</div>
+                      <div className="text-sm text-gray-500 capitalize">{(contract.serviceType || '').replace('_', ' ')}</div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
                         {getStatusIcon(contract.status)}
                         <span className={`badge ${getStatusColor(contract.status)}`}>
-                          {contract.status.replace('_', ' ')}
+                          {(contract.status || '').replace('_', ' ')}
                         </span>
                       </div>
                     </td>
