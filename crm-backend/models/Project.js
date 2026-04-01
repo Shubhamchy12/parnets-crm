@@ -126,6 +126,82 @@ const projectSchema = new mongoose.Schema({
     scopeOfWork:  { filename: String, path: String, originalName: String },
     otherDoc:     { filename: String, path: String, originalName: String },
   },
+  // Terms & Conditions
+  termsAndConditions: {
+    type: String,
+    trim: true,
+    default: `These Terms and Conditions ("Agreement") govern the use of services provided by ParNetsSoftware PVT LTD to the Client. By engaging our services, you agree to abide by this Agreement.
+
+1. Services Offered
+We provide web and mobile app development services, including but not limited to:
+• Website design and development
+• Mobile application design and development
+• Maintenance and support services
+• Integration of third-party APIs
+• UI/UX design services
+
+2. Engagement and Deliverables
+2.1 Scope of Work
+The scope of the project, deliverables, timeline, and pricing will be outlined in a separate agreement or proposal, which forms part of this Agreement.
+
+2.2 Client Responsibilities
+The Client must provide all necessary materials, content, and approvals in a timely manner to avoid project delays.
+
+2.3 Changes in Scope
+Any requests for changes outside the agreed scope of work will be subject to additional costs and an extended timeline.
+
+3. Payment Terms
+3.1 Payment Structure
+Payments will be divided into milestones as agreed in the project proposal.
+
+3.2 Non-refundable Deposits
+Once the Payment is done no refund.
+
+4. Intellectual Property
+4.1 Ownership
+Upon full payment, the Client owns the final deliverables.
+
+4.2 Third-party Materials
+Any third-party assets used will remain subject to their respective licensing agreements.
+
+4.3 Portfolio Usage
+The Company reserves the right to display the project as part of its portfolio unless otherwise agreed in writing.
+
+5. Confidentiality
+Both parties agree to keep confidential any proprietary or sensitive information shared during the project.
+
+6. Warranty and Support
+6.1 Warranty Period
+We offer a warranty for 30 days post-project completion to address any bugs or issues related to the agreed scope.
+
+6.2 Ongoing Support
+Support and maintenance beyond the warranty period will be subject to additional fees.
+
+7. Termination
+7.1 By the Client
+The Client may terminate the project by providing written notice. Any work completed up to the termination date will be billed accordingly.
+
+7.2 By the Company
+We may terminate the project for non-payment or breach of terms.
+
+8. Liability
+The Company is not liable for indirect or consequential damages, including loss of profits, data, or revenue, arising from the use of our services.
+
+9. Governing Law
+This Agreement is governed by the laws of Bengaluru City, Karnataka, and any disputes will be resolved under this jurisdiction.
+
+10. Miscellaneous
+10.1 Force Majeure
+We are not responsible for delays caused by factors beyond our control, such as natural disasters or third-party service failures.
+
+10.2 Entire Agreement
+This document, along with the project proposal, constitutes the entire agreement between the parties.
+
+Contact Information
+For any questions or concerns about this Agreement, contact us at:
+Email: hello@parnetsgroup.com
+Phone: +91 9740016068`
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

@@ -8,8 +8,37 @@ const ADMIN = ['super_admin', 'admin'];
 // GET /api/vendors
 router.get('/', authenticate, authorize(...ADMIN), async (req, res) => {
   try {
-    const vendors = await Vendor.find().sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: { vendors } });
+    const { page = 1, limit = 20, search, category } = req.query;
+    const filter = {};
+    
+    if (search) {
+      const e = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$or = [
+        { name: { $regex: e, $options: 'i' } },
+        { email: { $regex: e, $options: 'i' } },
+        { phone: { $regex: e, $options: 'i' } }
+      ];
+    }
+    if (category) filter.category = category;
+
+    const total = await Vendor.countDocuments(filter);
+    const vendors = await Vendor.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit)
+      .lean();
+
+    res.json({ 
+      success: true, 
+      data: { 
+        vendors, 
+        pagination: { 
+          current: +page, 
+          pages: Math.ceil(total / limit), 
+          total 
+        } 
+      } 
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

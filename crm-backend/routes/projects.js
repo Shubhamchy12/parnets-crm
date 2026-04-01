@@ -47,7 +47,7 @@ router.post('/create', authenticate, authorize('super_admin', 'admin', 'sub_admi
   async (req, res) => {
     try {
       const { name, client, startDate, endDate, description, budget,
-              status, projectType, priority, technology, technicalSolution } = req.body;
+              status, projectType, priority, technology, technicalSolution, termsAndConditions } = req.body;
 
       if (!name?.trim()) return res.status(400).json({ success: false, message: 'Project name is required' });
       if (!client)       return res.status(400).json({ success: false, message: 'Client is required' });
@@ -63,6 +63,7 @@ router.post('/create', authenticate, authorize('super_admin', 'admin', 'sub_admi
         priority: priority || 'medium',
         technology: technology ? technology.split(',').map(t => t.trim()).filter(Boolean) : [],
         technicalSolution: technicalSolution?.trim(),
+        termsAndConditions: termsAndConditions?.trim(),
         projectDocs: {
           agreement:   fileInfo(files.agreement?.[0]),
           scopeOfWork: fileInfo(files.scopeOfWork?.[0]),

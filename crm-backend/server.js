@@ -40,10 +40,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 5002;
 
-// Connect to MongoDB
+// Connect to MongoDB then start server
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📋 Roles: admin | employee | sales`);
+      console.log(`   Create users via POST /api/auth/register or User Management UI`);
+    });
+  })
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    process.exit(1);
+  });
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
@@ -109,10 +119,4 @@ app.get('/api/health', (req, res) => {
 // 404
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'API endpoint not found' });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📋 Roles: admin | employee | sales`);
-  console.log(`   Create users via POST /api/auth/register or User Management UI`);
 });

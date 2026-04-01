@@ -126,6 +126,9 @@ const userSchema = new mongoose.Schema({
     salarySlip2:{ filename: String, path: String, originalName: String },
     salarySlip3:{ filename: String, path: String, originalName: String },
   },
+  // Remark / notes about the employee
+  remark: { type: String, default: '' },
+
   // Bank details
   bankDetails: {
     bankName:          String,

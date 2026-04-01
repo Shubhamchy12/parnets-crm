@@ -8,6 +8,16 @@ const paymentSchema = new mongoose.Schema({
   recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { _id: true });
 
+const installmentPlanSchema = new mongoose.Schema({
+  installmentNumber: { type: Number, required: true },
+  label: { type: String, required: true },
+  amount: { type: Number, required: true },
+  dueDate: { type: Date, required: true },
+  status: { type: String, enum: ['pending', 'partial', 'paid'], default: 'pending' },
+  paidAmount: { type: Number, default: 0 },
+  description: String,
+}, { _id: true });
+
 const itemSchema = new mongoose.Schema({
   description: String,
   qty: { type: Number, default: 1 },
@@ -40,6 +50,8 @@ const invoiceSchema = new mongoose.Schema({
   notes: String,
   status: { type: String, enum: ['draft', 'sent', 'paid', 'partial', 'overdue'], default: 'draft' },
   payments: [paymentSchema],
+  installmentPlan: [installmentPlanSchema],
+  hasInstallmentPlan: { type: Boolean, default: false },
   sentAt: Date,
   sentVia: { type: String, enum: ['email', 'whatsapp', null], default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

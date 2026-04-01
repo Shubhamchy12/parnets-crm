@@ -10,19 +10,32 @@ const ADMIN = ['super_admin', 'admin', 'sub_admin', 'manager'];
 // GET /api/progress?projectId=&employeeId=
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { projectId, employeeId } = req.query;
+    const { projectId, employeeId, page = 1, limit = 20 } = req.query;
     const query = {};
     if (projectId) query.project = projectId;
     if (employeeId) query.employee = employeeId;
     // Employees can only see their own
     if (!ADMIN.includes(req.user.role)) query.employee = req.user._id;
 
+    const total = await DailyProgress.countDocuments(query);
     const entries = await DailyProgress.find(query)
       .populate({ path: 'employee', select: 'name email department', options: { strictPopulate: false } })
       .populate({ path: 'adminCommentBy', select: 'name', options: { strictPopulate: false } })
-      .sort({ date: -1, createdAt: -1 });
+      .sort({ date: -1, createdAt: -1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit);
 
-    res.json({ success: true, data: { entries } });
+    res.json({ 
+      success: true, 
+      data: { 
+        entries,
+        pagination: { 
+          current: +page, 
+          pages: Math.ceil(total / limit), 
+          total 
+        }
+      } 
+    });
   } catch (e) {
     console.error('Get progress error:', e);
     res.status(500).json({ success: false, message: 'Server error' });

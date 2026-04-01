@@ -7,8 +7,41 @@ const router = express.Router();
 // GET /api/services — all authenticated users
 router.get('/', authenticate, async (req, res) => {
   try {
-    const services = await Service.find({ isActive: true }).sort({ name: 1 }).select('_id name description defaultAmount');
-    res.json({ success: true, data: { services } });
+    const { page = 1, limit = 20, search, isActive } = req.query;
+    const filter = {};
+    
+    if (isActive !== undefined) {
+      filter.isActive = isActive === 'true';
+    } else {
+      filter.isActive = true;
+    }
+    
+    if (search) {
+      const e = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$or = [
+        { name: { $regex: e, $options: 'i' } },
+        { description: { $regex: e, $options: 'i' } }
+      ];
+    }
+
+    const total = await Service.countDocuments(filter);
+    const services = await Service.find(filter)
+      .sort({ name: 1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit)
+      .select('_id name description defaultAmount isActive');
+
+    res.json({ 
+      success: true, 
+      data: { 
+        services, 
+        pagination: { 
+          current: +page, 
+          pages: Math.ceil(total / limit), 
+          total 
+        } 
+      } 
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

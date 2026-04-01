@@ -81,14 +81,31 @@ router.post('/swipe', authenticate, logActivity('Attendance swipe', 'attendance'
     };
 
     if (!attendance) {
-      attendance = await Attendance.create({
-        employee: req.user._id,
-        date: startOfDay,
-        status: 'present',
-        entries: [newEntry],
-        // Also set legacy checkIn for backward compat
-        checkIn: swipeType === 'in' ? { time: now, method: 'web', faceVerified, ...(location ? { location } : {}) } : undefined,
-      });
+      try {
+        attendance = await Attendance.create({
+          employee: req.user._id,
+          date: startOfDay,
+          status: 'present',
+          entries: [newEntry],
+          checkIn: swipeType === 'in' ? { time: now, method: 'web', faceVerified, ...(location ? { location } : {}) } : undefined,
+        });
+      } catch (createErr) {
+        // Race condition: another request created the record between our findOne and create
+        if (createErr.code === 11000) {
+          attendance = await Attendance.findOne({ employee: req.user._id, date: { $gte: startOfDay, $lte: endOfDay } });
+          if (!attendance) throw createErr;
+          attendance.entries.push(newEntry);
+          if (swipeType === 'in' && !attendance.checkIn?.time) {
+            attendance.checkIn = { time: now, method: 'web', faceVerified, ...(location ? { location } : {}) };
+          }
+          if (swipeType === 'out') {
+            attendance.checkOut = { time: now, method: 'web', faceVerified, ...(location ? { location } : {}) };
+          }
+          await attendance.save();
+        } else {
+          throw createErr;
+        }
+      }
     } else {
       attendance.entries.push(newEntry);
       // Keep legacy checkIn/checkOut in sync
@@ -135,13 +152,28 @@ router.post('/checkin', authenticate, logActivity('Attendance check-in', 'attend
       existing.entries.push(entry);
       attendance = await existing.save();
     } else {
-      attendance = await Attendance.create({
-        employee: req.user._id,
-        date: startOfDay,
-        checkIn: checkInData,
-        entries: [entry],
-        status: 'present',
-      });
+      try {
+        attendance = await Attendance.create({
+          employee: req.user._id,
+          date: startOfDay,
+          checkIn: checkInData,
+          entries: [entry],
+          status: 'present',
+        });
+      } catch (createErr) {
+        if (createErr.code === 11000) {
+          // Race condition — record was created between our check and create
+          const found = await Attendance.findOne({ employee: req.user._id, date: { $gte: startOfDay, $lte: endOfDay } });
+          if (!found) throw createErr;
+          if (found.checkIn?.time)
+            return res.status(400).json({ success: false, message: 'Already checked in today' });
+          found.set('checkIn', checkInData);
+          found.entries.push(entry);
+          attendance = await found.save();
+        } else {
+          throw createErr;
+        }
+      }
     }
 
     const populated = await Attendance.findById(attendance._id)

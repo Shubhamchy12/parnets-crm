@@ -7,8 +7,42 @@ const router = express.Router();
 // GET /api/departments — all authenticated users (needed for employee registration dropdown)
 router.get('/', authenticate, async (req, res) => {
   try {
-    const departments = await Department.find().sort({ name: 1 }).select('_id name description');
-    res.json({ success: true, data: { departments } });
+    const { page, limit = 20, search } = req.query;
+    const query = {};
+    
+    if (search) {
+      const e = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { name: { $regex: e, $options: 'i' } },
+        { description: { $regex: e, $options: 'i' } }
+      ];
+    }
+
+    // If no pagination params, return all (for dropdowns)
+    if (!page) {
+      const departments = await Department.find(query).sort({ name: 1 }).select('_id name description');
+      return res.json({ success: true, data: { departments } });
+    }
+
+    // With pagination
+    const total = await Department.countDocuments(query);
+    const departments = await Department.find(query)
+      .sort({ name: 1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit)
+      .select('_id name description');
+
+    res.json({ 
+      success: true, 
+      data: { 
+        departments,
+        pagination: { 
+          current: +page, 
+          pages: Math.ceil(total / limit), 
+          total 
+        }
+      } 
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

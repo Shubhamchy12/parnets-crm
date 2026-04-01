@@ -1,6 +1,9 @@
 import express from 'express';
 import PDFDocument from 'pdfkit';
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
 import Invoice from '../models/Invoice.js';
@@ -8,6 +11,7 @@ import Client from '../models/Client.js';
 import Quotation from '../models/Quotation.js';
 import Transaction from '../models/Transaction.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 
 async function resolveClient(clientId) {
@@ -20,17 +24,67 @@ async function resolveClient(clientId) {
 // GET /api/invoices/approved-quotations
 router.get('/approved-quotations', authenticate, async (req, res) => {
   try {
+    console.log('📋 Fetching approved quotations...');
+    
     const quotations = await Quotation.find({ status: 'approved' })
-      .populate({ path: 'project', select: 'name' })
+      .populate({ path: 'project', select: 'name client', populate: { path: 'client', select: 'name email phone company address' } })
       .populate({ path: 'client', select: 'name email phone company address' })
       .sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: { quotations } });
+
+    console.log(`✅ Found ${quotations.length} approved quotation(s)`);
+    
+    if (quotations.length > 0) {
+      console.log('📊 Sample quotation data:', JSON.stringify(quotations[0], null, 2));
+    }
+
+    const resolved = quotations.map(q => {
+      // Resolve client - try multiple sources
+      let client = null;
+      if (q.client && typeof q.client === 'object' && q.client.name) {
+        client = q.client;
+      } else if (q.project?.client && typeof q.project.client === 'object' && q.project.client.name) {
+        client = q.project.client;
+      } else if (q.clientName) {
+        client = { name: q.clientName };
+      }
+
+      // Resolve project - try multiple sources
+      let project = null;
+      if (q.project && typeof q.project === 'object' && q.project.name) {
+        project = { _id: q.project._id, name: q.project.name };
+      } else if (q.projectName) {
+        project = { name: q.projectName };
+      }
+
+      console.log(`   - ${q.quotationNumber || 'NO-NUMBER'}: Client=${client?.name || 'N/A'}, Project=${project?.name || 'N/A'}, GrandTotal=${q.grandTotal || 0}`);
+
+      return { 
+        ...q, 
+        client, 
+        project,
+        // Ensure these fields are always present
+        quotationNumber: q.quotationNumber || 'N/A',
+        clientName: client?.name || q.clientName || 'No Client',
+        projectName: project?.name || q.projectName || 'No Project',
+        grandTotal: q.grandTotal || 0,
+        developmentBudget: q.developmentBudget || 0,
+        services: q.services || [],
+        subtotal: q.subtotal || 0,
+        cgst: q.cgst || 0,
+        sgst: q.sgst || 0,
+        paymentTerms: q.paymentTerms || '',
+        createdAt: q.createdAt
+      };
+    });
+
+    res.json({ success: true, data: { quotations: resolved } });
   } catch (e) {
+    console.error('❌ approved-quotations error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// GET /api/invoices/by-quote/:quoteId — all invoices for a quotation
+// GET /api/invoices/by-quote/:quoteId â€” all invoices for a quotation
 router.get('/by-quote/:quoteId', authenticate, async (req, res) => {
   try {
     const invoices = await Invoice.find({ fromQuote: req.params.quoteId })
@@ -60,6 +114,15 @@ router.get('/', authenticate, async (req, res) => {
       .limit(+limit)
       .lean();
 
+    // Check and update overdue status
+    const now = new Date();
+    for (const inv of invoices) {
+      if (inv.dueDate && new Date(inv.dueDate) < now && inv.status !== 'paid' && inv.status !== 'overdue') {
+        await Invoice.findByIdAndUpdate(inv._id, { status: 'overdue' });
+        inv.status = 'overdue';
+      }
+    }
+
     res.json({ success: true, data: { invoices, pagination: { current: +page, pages: Math.ceil(total / limit), total } } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -67,7 +130,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // POST /api/invoices
-router.post('/', authenticate, authorize('super_admin', 'admin', 'sales'),
+router.post('/', authenticate, authorize('super_admin', 'admin', 'sub_admin', 'sales'),
   logActivity('Invoice created', 'invoice', 'medium'),
   async (req, res) => {
     try {
@@ -82,36 +145,178 @@ router.post('/', authenticate, authorize('super_admin', 'admin', 'sales'),
         totalPaidSoFar = 0,
       } = req.body;
 
-      const subtotal = items.reduce((s, i) => s + ((i.qty || i.quantity || 1) * (i.rate || 0)), 0);
-      const total = subtotal + Number(tax) - Number(discount);
+      // Safe ObjectId conversion — avoid cast errors
+      const safeId = (val) => {
+        if (!val) return undefined;
+        const s = String(val);
+        return /^[a-f\d]{24}$/i.test(s) ? s : undefined;
+      };
+
+      // If fromQuote is provided, fetch quotation data dynamically
+      let quotationData = null;
+      let resolvedItems = items;
+      let resolvedClientName = clientName || '';
+      let resolvedClientAddress = clientAddress || '';
+      let resolvedClientPhone = clientPhone || '';
+      let resolvedProjectName = projectName || '';
+      let resolvedQuotationNumber = quotationNumber || '';
+
+      if (fromQuote && safeId(fromQuote)) {
+        try {
+          quotationData = await Quotation.findById(fromQuote)
+            .populate('client', 'name email phone company address')
+            .populate('project', 'name')
+            .lean();
+
+          if (quotationData) {
+            // Build items from quotation dynamically
+            resolvedItems = [];
+            if (quotationData.developmentBudget > 0) {
+              resolvedItems.push({
+                description: 'Development Budget',
+                qty: 1,
+                rate: quotationData.developmentBudget,
+              });
+            }
+            if (quotationData.services && quotationData.services.length > 0) {
+              quotationData.services.forEach(s => {
+                resolvedItems.push({
+                  description: s.serviceName || 'Service',
+                  qty: 1,
+                  rate: Number(s.amount) || 0,
+                });
+              });
+            }
+
+            // Resolve client info from quotation
+            if (quotationData.client) {
+              resolvedClientName = quotationData.client.name || quotationData.clientName || '';
+              resolvedClientPhone = quotationData.client.phone || '';
+              const addr = quotationData.client.address;
+              if (addr) {
+                if (typeof addr === 'string') {
+                  resolvedClientAddress = addr;
+                } else if (typeof addr === 'object') {
+                  resolvedClientAddress = [addr.street, addr.city, addr.state, addr.zipCode, addr.country]
+                    .filter(Boolean).join(', ');
+                }
+              }
+            }
+
+            // Resolve project name from quotation
+            if (quotationData.project) {
+              resolvedProjectName = quotationData.project.name || quotationData.projectName || '';
+            }
+
+            // Quotation number
+            resolvedQuotationNumber = quotationData.quotationNumber || '';
+          }
+        } catch (err) {
+          console.error('Error fetching quotation:', err);
+        }
+      }
+
+      // Fallback: Flatten address if it's an object
+      if (!resolvedClientAddress && clientAddress) {
+        if (typeof clientAddress === 'string') {
+          resolvedClientAddress = clientAddress;
+        } else if (typeof clientAddress === 'object') {
+          resolvedClientAddress = [clientAddress.street, clientAddress.city, clientAddress.state, clientAddress.zipCode, clientAddress.country]
+            .filter(Boolean).join(', ');
+        } else {
+          resolvedClientAddress = String(clientAddress);
+        }
+      }
+      
+      // Resolve client name if not provided
+      if (!resolvedClientName && client) {
+        try {
+          const c = await Client.findById(client).select('name').lean();
+          resolvedClientName = c?.name || '';
+        } catch (_) {}
+      }
+
+      const subtotal = resolvedItems.reduce((s, i) => s + ((i.qty || i.quantity || 1) * (i.rate || 0)), 0);
+      
+      // For installment invoices, use the provided total instead of calculating from items
+      // because items represent the full quotation, but total is the installment amount
+      let finalTotal = subtotal + Number(tax) - Number(discount);
+      let finalSubtotal = subtotal;
+      
+      if (installmentNumber && req.body.total) {
+        // This is an installment invoice - use the provided amounts
+        finalTotal = Number(req.body.total);
+        finalSubtotal = Number(req.body.subtotal || req.body.total);
+        console.log(`📦 Installment ${installmentNumber}: Using provided total ${finalTotal} instead of calculated ${subtotal}`);
+      }
+      
       const totalBudget = Number(budget) || 0;
       const thisPaid = Number(paidAmount) || 0;
       const alreadyPaid = Number(totalPaidSoFar) || 0;
       const remainingAmount = Math.max(0, totalBudget - alreadyPaid - thisPaid);
 
-      let resolvedClientName = clientName;
-      if (!resolvedClientName && client) {
-        const c = await Client.findById(client).select('name').lean();
-        resolvedClientName = c?.name || '';
+      // Check for duplicate installment and return existing invoice details
+      if (fromQuote && installmentNumber) {
+        const existingInstallment = await Invoice.findOne({
+          fromQuote: safeId(fromQuote),
+          installmentNumber: installmentNumber
+        })
+        .populate('payments')
+        .lean();
+        
+        if (existingInstallment) {
+          const statusText = existingInstallment.status === 'paid' 
+            ? 'PAID' 
+            : existingInstallment.status === 'partial' 
+            ? 'PARTIALLY PAID' 
+            : 'PENDING';
+          
+          const paidAmount = existingInstallment.paidAmount || 0;
+          const totalAmount = existingInstallment.total || 0;
+          const remainingAmount = existingInstallment.remainingAmount || 0;
+          
+          // Get last payment date if exists
+          let lastPaymentDate = null;
+          if (existingInstallment.payments && existingInstallment.payments.length > 0) {
+            const lastPayment = existingInstallment.payments[existingInstallment.payments.length - 1];
+            lastPaymentDate = lastPayment.date;
+          }
+          
+          return res.status(400).json({
+            success: false,
+            message: `Installment ${installmentNumber} already exists for this quotation.`,
+            error: 'DUPLICATE_INSTALLMENT',
+            existingInvoice: {
+              invoiceNumber: existingInstallment.invoiceNumber,
+              status: statusText,
+              total: totalAmount,
+              paidAmount: paidAmount,
+              remainingAmount: remainingAmount,
+              lastPaymentDate: lastPaymentDate,
+              createdAt: existingInstallment.createdAt,
+              dueDate: existingInstallment.dueDate
+            }
+          });
+        }
       }
 
       const invoiceNumber = await Invoice.generateInvoiceNumber();
 
       const invoice = await Invoice.create({
         invoiceNumber,
-        client: client || undefined,
-        clientName: resolvedClientName || '',
-        clientAddress: clientAddress || '',
-        clientPhone: clientPhone || '',
-        project: project || undefined,
-        projectName: projectName || '',
-        fromQuote: fromQuote || undefined,
-        quotationNumber: quotationNumber || '',
-        items,
-        subtotal,
+        client: safeId(client),
+        clientName: resolvedClientName,
+        clientAddress: resolvedClientAddress,
+        clientPhone: resolvedClientPhone,
+        project: safeId(project),
+        projectName: resolvedProjectName,
+        fromQuote: safeId(fromQuote),
+        quotationNumber: resolvedQuotationNumber,
+        items: resolvedItems,
+        subtotal: finalSubtotal,
         tax: Number(tax),
         discount: Number(discount),
-        total,
+        total: finalTotal,
         budget: totalBudget,
         paidAmount: thisPaid,
         totalPaidSoFar: alreadyPaid + thisPaid,
@@ -126,13 +331,20 @@ router.post('/', authenticate, authorize('super_admin', 'admin', 'sales'),
         createdBy: req.user._id,
       });
 
+      console.log(`✅ Invoice created: ${invoice.invoiceNumber}`, {
+        installment: installmentNumber || 'N/A',
+        subtotal: finalSubtotal,
+        total: finalTotal,
+        budget: totalBudget,
+      });
+
       res.status(201).json({ success: true, message: 'Invoice created successfully', data: { invoice } });
     } catch (e) {
-      console.error('Create invoice error:', e);
+      console.error('Create invoice error:', e.message, e.stack);
       if (e.code === 11000) {
         return res.status(400).json({ success: false, message: 'Invoice number already exists. Please try again.' });
       }
-      res.status(500).json({ success: false, message: 'Something went wrong' });
+      res.status(500).json({ success: false, message: e.message || 'Something went wrong' });
     }
   }
 );
@@ -211,23 +423,53 @@ router.post('/:id/payment', authenticate, authorize('super_admin', 'admin', 'sal
       reference: req.body.reference || '',
       recordedBy: req.user._id,
     };
+    
+    const installmentId = req.body.installmentId;
+    
     invoice.payments.push(payment);
 
     const totalPaid = invoice.payments.reduce((s, p) => s + (p.amount || 0), 0);
     invoice.paidAmount = totalPaid;
-    invoice.totalPaidSoFar = totalPaid;
-    // If budget exists, remaining = budget - totalPaid; otherwise fall back to invoice total
-    const base = invoice.budget > 0 ? invoice.budget : invoice.total;
-    invoice.remainingAmount = Math.max(0, base - totalPaid);
-    invoice.status = totalPaid >= invoice.total ? 'paid' : 'partial';
+    
+    // If installment plan exists, update installment status
+    if (invoice.hasInstallmentPlan && installmentId) {
+      const installment = invoice.installmentPlan.id(installmentId);
+      if (installment) {
+        installment.paidAmount = (installment.paidAmount || 0) + payment.amount;
+        if (installment.paidAmount >= installment.amount) {
+          installment.status = 'paid';
+        } else if (installment.paidAmount > 0) {
+          installment.status = 'partial';
+        }
+      }
+    }
+    
+    // Calculate remaining amount based on THIS invoice's total only
+    invoice.remainingAmount = Math.max(0, invoice.total - totalPaid);
+    
+    // Update status based on payment
+    if (totalPaid >= invoice.total) {
+      invoice.status = 'paid';
+    } else if (totalPaid > 0) {
+      invoice.status = 'partial';
+    }
+    
+    // Check if overdue
+    if (invoice.dueDate && new Date(invoice.dueDate) < new Date() && invoice.status !== 'paid') {
+      invoice.status = 'overdue';
+    }
+    
     await invoice.save();
+    
+    console.log(`✅ Payment recorded: ${payment.amount} for ${invoice.invoiceNumber}`);
+    console.log(`   Total: ${invoice.total}, Paid: ${totalPaid}, Remaining: ${invoice.remainingAmount}, Status: ${invoice.status}`);
 
     // Auto-create accounting income entry when payment recorded
     await Transaction.create({
       type: 'income',
       category: 'Invoice Payment',
       amount: payment.amount,
-      description: `Payment for ${invoice.invoiceNumber}${invoice.clientName ? ' — ' + invoice.clientName : ''}`,
+      description: `Payment for ${invoice.invoiceNumber}${invoice.clientName ? ' â€” ' + invoice.clientName : ''}`,
       reference: payment.reference || invoice.invoiceNumber,
       date: payment.date,
       invoice: invoice._id,
@@ -238,6 +480,86 @@ router.post('/:id/payment', authenticate, authorize('super_admin', 'admin', 'sal
     res.json({ success: true, message: 'Payment recorded', data: { invoice } });
   } catch (e) {
     console.error('Payment error:', e);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// POST /api/invoices/:id/installment-plan - Add/Update installment plan
+router.post('/:id/installment-plan', authenticate, authorize('super_admin', 'admin', 'sales'),
+  logActivity('Installment plan created', 'invoice', 'medium'),
+  async (req, res) => {
+    try {
+      const invoice = await Invoice.findById(req.params.id);
+      if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+
+      const { installments } = req.body;
+      if (!Array.isArray(installments) || installments.length === 0) {
+        return res.status(400).json({ success: false, message: 'Installments array is required' });
+      }
+
+      // Validate total matches invoice total
+      const planTotal = installments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+      if (Math.abs(planTotal - invoice.total) > 0.01) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Installment total (${planTotal}) must equal invoice total (${invoice.total})` 
+        });
+      }
+
+      invoice.installmentPlan = installments.map((inst, idx) => ({
+        installmentNumber: idx + 1,
+        label: inst.label || `Installment ${idx + 1}`,
+        amount: Number(inst.amount),
+        dueDate: new Date(inst.dueDate),
+        description: inst.description || '',
+        status: 'pending',
+        paidAmount: 0,
+      }));
+      
+      invoice.hasInstallmentPlan = true;
+      await invoice.save();
+
+      res.json({ success: true, message: 'Installment plan created', data: { invoice } });
+    } catch (e) {
+      console.error('Installment plan error:', e);
+      res.status(500).json({ success: false, message: e.message || 'Server error' });
+    }
+  }
+);
+
+// PUT /api/invoices/:id/installment-plan/:installmentId - Update specific installment
+router.put('/:id/installment-plan/:installmentId', authenticate, authorize('super_admin', 'admin', 'sales'), async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+
+    const installment = invoice.installmentPlan.id(req.params.installmentId);
+    if (!installment) return res.status(404).json({ success: false, message: 'Installment not found' });
+
+    if (req.body.label) installment.label = req.body.label;
+    if (req.body.amount) installment.amount = Number(req.body.amount);
+    if (req.body.dueDate) installment.dueDate = new Date(req.body.dueDate);
+    if (req.body.description !== undefined) installment.description = req.body.description;
+
+    await invoice.save();
+    res.json({ success: true, message: 'Installment updated', data: { invoice } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// DELETE /api/invoices/:id/installment-plan - Remove installment plan
+router.delete('/:id/installment-plan', authenticate, authorize('super_admin', 'admin', 'sales'), async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+
+    invoice.installmentPlan = [];
+    invoice.hasInstallmentPlan = false;
+    await invoice.save();
+
+    res.json({ success: true, message: 'Installment plan removed', data: { invoice } });
+  } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
@@ -263,17 +585,17 @@ router.post('/:id/send-email', authenticate, authorize('super_admin', 'admin', '
       `<tr>
         <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9">${item.description || ''}</td>
         <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:center">${item.qty || 1}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">₹${Number(item.rate || 0).toLocaleString()}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">₹${((item.qty || 1) * (item.rate || 0)).toLocaleString()}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">â‚¹${Number(item.rate || 0).toLocaleString()}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">â‚¹${((item.qty || 1) * (item.rate || 0)).toLocaleString()}</td>
       </tr>`
     ).join('');
 
     await transporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME || 'Parnets CRM'}" <${process.env.SMTP_USER}>`,
       to: clientEmail,
-      subject: `Invoice ${invoice.invoiceNumber} — Parnets Networks Pvt. Ltd.`,
+      subject: `Invoice ${invoice.invoiceNumber} â€” Parnets Networks Pvt. Ltd.`,
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1e293b">
-        <div style="background:linear-gradient(135deg,#16a34a,#2563eb);padding:24px;border-radius:12px 12px 0 0">
+        <div style="background:linear-gradient(135deg,#f97316,#2563eb);padding:24px;border-radius:12px 12px 0 0">
           <h2 style="color:#fff;margin:0">Invoice ${invoice.invoiceNumber}</h2>
           ${invoice.dueDate ? `<p style="color:rgba(255,255,255,0.85);margin:4px 0 0">Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</p>` : ''}
         </div>
@@ -288,9 +610,9 @@ router.post('/:id/send-email', authenticate, authorize('super_admin', 'admin', '
             </tr></thead>
             <tbody>${itemsHtml}</tbody>
             <tfoot>
-              <tr><td colspan="3" style="padding:6px 12px;text-align:right">Subtotal</td><td style="padding:6px 12px;text-align:right">₹${Number(invoice.subtotal || 0).toLocaleString()}</td></tr>
-              ${invoice.tax ? `<tr><td colspan="3" style="padding:6px 12px;text-align:right">GST</td><td style="padding:6px 12px;text-align:right">₹${Number(invoice.tax || 0).toLocaleString()}</td></tr>` : ''}
-              <tr style="font-weight:bold"><td colspan="3" style="padding:8px 12px;text-align:right">Total</td><td style="padding:8px 12px;text-align:right">₹${Number(invoice.total || 0).toLocaleString()}</td></tr>
+              <tr><td colspan="3" style="padding:6px 12px;text-align:right">Subtotal</td><td style="padding:6px 12px;text-align:right">â‚¹${Number(invoice.subtotal || 0).toLocaleString()}</td></tr>
+              ${invoice.tax ? `<tr><td colspan="3" style="padding:6px 12px;text-align:right">GST</td><td style="padding:6px 12px;text-align:right">â‚¹${Number(invoice.tax || 0).toLocaleString()}</td></tr>` : ''}
+              <tr style="font-weight:bold"><td colspan="3" style="padding:8px 12px;text-align:right">Total</td><td style="padding:8px 12px;text-align:right">â‚¹${Number(invoice.total || 0).toLocaleString()}</td></tr>
             </tfoot>
           </table>
           ${invoice.notes ? `<p style="color:#64748b;font-size:14px"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
@@ -322,8 +644,8 @@ router.post('/:id/send-whatsapp', authenticate, authorize('super_admin', 'admin'
       return res.status(503).json({ success: false, message: 'WhatsApp (Twilio) not configured.' });
     }
 
-    const itemLines = (invoice.items || []).map(i => `• ${i.description}: ₹${((i.qty || 1) * (i.rate || 0)).toLocaleString()}`).join('\n');
-    const message = `*Invoice ${invoice.invoiceNumber}*${invoice.installmentLabel ? '\nInstallment: ' + invoice.installmentLabel : ''}\n\n${itemLines}\n\n*Amount: ₹${Number(invoice.total || 0).toLocaleString()}*${invoice.remainingAmount > 0 ? '\nRemaining: ₹' + Number(invoice.remainingAmount).toLocaleString('en-IN') : ''}\n${invoice.dueDate ? `Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}` : ''}\n\nRegards,\nParnets Software India Pvt Ltd`;
+    const itemLines = (invoice.items || []).map(i => `â€¢ ${i.description}: â‚¹${((i.qty || 1) * (i.rate || 0)).toLocaleString()}`).join('\n');
+    const message = `*Invoice ${invoice.invoiceNumber}*${invoice.installmentLabel ? '\nInstallment: ' + invoice.installmentLabel : ''}\n\n${itemLines}\n\n*Amount: â‚¹${Number(invoice.total || 0).toLocaleString()}*${invoice.remainingAmount > 0 ? '\nRemaining: â‚¹' + Number(invoice.remainingAmount).toLocaleString('en-IN') : ''}\n${invoice.dueDate ? `Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}` : ''}\n\nRegards,\nParnets Software India Pvt Ltd`;
 
     const toNumber = `whatsapp:+91${clientPhone.replace(/\D/g, '').slice(-10)}`;
     const authHeader = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
@@ -354,12 +676,10 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       .lean();
     if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
 
-    // Fetch all sibling invoices from same quotation for installment schedule
     let siblingInvoices = [];
     if (invoice.fromQuote) {
       siblingInvoices = await Invoice.find({ fromQuote: invoice.fromQuote })
-        .sort({ installmentNumber: 1, createdAt: 1 })
-        .lean();
+        .sort({ installmentNumber: 1, createdAt: 1 }).lean();
     }
 
     const clientDetails = invoice.client || null;
@@ -367,175 +687,250 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="invoice-${invoice.invoiceNumber}.pdf"`);
 
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, autoFirstPage: false });
     doc.pipe(res);
+    doc.addPage({ size: 'A4', margin: 0 });
 
-    // Header
-    doc.rect(0, 0, doc.page.width, 90).fill('#16a34a');
-    doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('INVOICE', 50, 22);
-    doc.fontSize(11).font('Helvetica').text(invoice.invoiceNumber, 50, 52);
-    if (invoice.installmentLabel) doc.fontSize(10).text(`(${invoice.installmentLabel})`, 50, 67);
-    doc.fontSize(10).text(`Date: ${new Date(invoice.createdAt).toLocaleDateString('en-IN')}`, 350, 22, { align: 'right', width: 200 });
-    if (invoice.dueDate) doc.text(`Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}`, 350, 38, { align: 'right', width: 200 });
-    if (invoice.quotationNumber) doc.text(`Ref: ${invoice.quotationNumber}`, 350, 54, { align: 'right', width: 200 });
-    doc.fillColor('#1e293b');
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const L = 40, R = pageW - 40;
+    const contentW = R - L;
 
-    // FROM / TO
-    let y = 108;
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('FROM', 50, y);
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('Parnets Software India Pvt Ltd', 50, y + 14);
-    doc.fontSize(9).font('Helvetica').fillColor('#475569')
-      .text('No. 12, Tech Park, Anna Nagar', 50, y + 28)
-      .text('Chennai, Tamil Nadu - 600040', 50, y + 41)
-      .text('Phone: +91 98765 43210', 50, y + 54)
-      .text('Email: billing@parnets.in', 50, y + 67)
-      .text('GSTIN: 33AAACP1234F1Z5', 50, y + 80);
+    // â”€â”€ HEADER BAND â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    doc.rect(0, 0, pageW, 140).fill('#ffffff');
 
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('TO', 300, y);
-    const cName = clientDetails?.name || invoice.clientName || '—';
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(cName, 300, y + 14);
-    let toY = y + 28;
-    if (clientDetails?.company) { doc.fontSize(9).font('Helvetica').fillColor('#475569').text(clientDetails.company, 300, toY); toY += 13; }
+    const logoPath = path.join(__dirname, '../../crm-frontent/public/logo.jpg');
+    if (fs.existsSync(logoPath)) {
+      doc.image(logoPath, L, 20, { fit: [120, 60] });
+    }
+
+    // Company name â€” 2 lines
+    doc.fillColor('#1e3a8a').fontSize(18).font('Helvetica-Bold')
+      .text('ParNets Software India Pvt Ltd', L, 88, { width: contentW, align: 'center', lineBreak: false });
+    // Address details - centered
+    doc.fillColor('#64748b').fontSize(9).font('Helvetica')
+      .text('So104/1/50, Singapura Main Rd,', L, 110, { width: contentW, align: 'center', lineBreak: false })
+      .text('Singapura Village, Varadharaja Nagar,', L, 122, { width: contentW, align: 'center', lineBreak: false })
+      .text('Vidyaranyapura, Bengaluru, Karnataka 560097', L, 134, { width: contentW, align: 'center', lineBreak: false });
+
+    // Contact details - centered
+    doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold')
+      .text('Contact: 095909 26068', L, 150, { width: contentW / 2 - 10, align: 'right', lineBreak: false });
+    doc.fillColor('#4f46e5').fontSize(9).font('Helvetica')
+      .text('hello@parnetsgroup.com', L + contentW / 2 + 10, 150, { width: contentW / 2 - 10, align: 'left', lineBreak: false });
+
+    // INVOICE label â€” right col
+    doc.fillColor('#f97316').fontSize(24).font('Helvetica-Bold')
+      .text('INVOICE', 320, 30, { width: 235, align: 'right', lineBreak: false });
+    doc.fillColor('#64748b').fontSize(10).font('Helvetica')
+      .text(invoice.invoiceNumber, 320, 60, { width: 235, align: 'right', lineBreak: false });
+    if (invoice.installmentLabel) {
+      doc.fillColor('#64748b').fontSize(9).font('Helvetica')
+        .text(invoice.installmentLabel, 320, 75, { width: 235, align: 'right', lineBreak: false });
+    }
+
+    let y = 175;
+
+    // â”€â”€ META ROW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    doc.rect(L, y, contentW, 22).fill('#fff7ed').stroke('#fed7aa');
+    doc.fillColor('#c2410c').fontSize(9).font('Helvetica')
+      .text(`Date: ${new Date(invoice.createdAt).toLocaleDateString('en-IN')}`, L + 10, y + 7, { lineBreak: false });
+    if (invoice.dueDate) {
+      doc.text(`Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}`, L + 160, y + 7, { lineBreak: false });
+    }
+    doc.text(`Status: ${(invoice.status || 'draft').toUpperCase()}`, L + 310, y + 7, { lineBreak: false });
+    if (invoice.quotationNumber) {
+      doc.text(`Ref: ${invoice.quotationNumber}`, L + 400, y + 7, { lineBreak: false });
+    }
+    y += 30;
+
+    // â”€â”€ FROM / TO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const boxW = (contentW - 12) / 2;
+    const boxH = 95;
+
+    doc.rect(L, y, boxW, boxH).fill('#f8fafc').stroke('#e2e8f0');
+    doc.rect(L, y, boxW, 20).fill('#f97316');
+    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text('FROM', L + 10, y + 6, { lineBreak: false });
+    doc.fillColor('#1e293b').fontSize(9.5).font('Helvetica-Bold')
+      .text('ParNets Software India Pvt Ltd', L + 10, y + 26, { width: boxW - 20, lineBreak: false });
+    doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
+      .text('So104/1/50, Singapura Main Rd, Vidyaranyapura', L + 10, y + 40, { width: boxW - 20, lineBreak: false })
+      .text('Bengaluru, Karnataka 560097', L + 10, y + 52, { width: boxW - 20, lineBreak: false })
+      .text('hello@parnetsgroup.com  |  095909 26068', L + 10, y + 64, { width: boxW - 20, lineBreak: false });
+
+    const toX = L + boxW + 12;
+    doc.rect(toX, y, boxW, boxH).fill('#f8fafc').stroke('#e2e8f0');
+    doc.rect(toX, y, boxW, 20).fill('#f97316');
+    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text('BILL TO', toX + 10, y + 6, { lineBreak: false });
+    const cName = clientDetails?.name || invoice.clientName || 'â€”';
+    doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold')
+      .text(cName, toX + 10, y + 26, { width: boxW - 20, lineBreak: false });
+    doc.fillColor('#475569').fontSize(9).font('Helvetica');
+    let cy = y + 40;
+    if (clientDetails?.company) { doc.text(clientDetails.company, toX + 10, cy, { width: boxW - 20, lineBreak: false }); cy += 14; }
     const addr = clientDetails?.address || invoice.clientAddress || '';
-    if (addr) { doc.fontSize(9).font('Helvetica').fillColor('#475569').text(addr, 300, toY, { width: 200 }); toY += 13; }
+    if (addr) { doc.text(addr, toX + 10, cy, { width: boxW - 20, lineBreak: false }); cy += 14; }
     const phone = clientDetails?.phone || invoice.clientPhone || '';
-    if (phone) { doc.fontSize(9).font('Helvetica').fillColor('#475569').text(`Phone: ${phone}`, 300, toY); toY += 13; }
-    if (clientDetails?.email) { doc.fontSize(9).font('Helvetica').fillColor('#475569').text(`Email: ${clientDetails.email}`, 300, toY); }
+    if (phone) { doc.text(phone, toX + 10, cy, { width: boxW - 20, lineBreak: false }); cy += 14; }
+    if (clientDetails?.email) { doc.text(clientDetails.email, toX + 10, cy, { width: boxW - 20, lineBreak: false }); }
+    y += boxH + 10;
 
-    y = 210;
-    doc.moveTo(50, y).lineTo(545, y).strokeColor('#e2e8f0').stroke();
-    y += 12;
-
+    // â”€â”€ PROJECT / DESCRIPTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const projectName = invoice.project?.name || invoice.projectName || '';
-    if (projectName) { doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('PROJECT', 50, y); doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(projectName, 130, y); y += 16; }
-    if (invoice.description) { doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('DESCRIPTION', 50, y); doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(invoice.description, 130, y, { width: 415 }); y += 16; }
-    if (invoice.installmentLabel) { doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('INSTALLMENT', 50, y); doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(invoice.installmentLabel, 130, y); y += 16; }
+    if (projectName || invoice.description || invoice.installmentLabel) {
+      doc.rect(L, y, contentW, 24).fill('#fff7ed').stroke('#fed7aa');
+      let infoText = '';
+      if (projectName) infoText += `Project: ${projectName}`;
+      if (invoice.installmentLabel) infoText += `  |  ${invoice.installmentLabel}`;
+      if (invoice.description) infoText += `  |  ${invoice.description}`;
+      doc.fillColor('#c2410c').fontSize(9).font('Helvetica-Bold')
+        .text(infoText, L + 10, y + 7, { width: contentW - 20, lineBreak: false });
+      y += 32;
+    }
 
-    y += 4;
-    doc.moveTo(50, y).lineTo(545, y).strokeColor('#e2e8f0').stroke();
-    y += 14;
+    // LINE ITEMS TABLE
+    const rH = 22;
+    const colQtyX = L + 295, colQtyW = 45;
+    const colRateX = L + 345, colRateW = 85;
+    const colAmtX = L + 435, colAmtW = R - L - 445;
 
-    // Line items
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('Invoice Details', 50, y); y += 18;
-    doc.rect(50, y, 495, 22).fill('#f0fdf4');
-    doc.fillColor('#166534').fontSize(9).font('Helvetica-Bold')
-      .text('DESCRIPTION', 60, y + 6).text('QTY', 340, y + 6, { width: 50, align: 'center' })
-      .text('RATE', 400, y + 6, { width: 70, align: 'right' }).text('AMOUNT', 480, y + 6, { align: 'right', width: 55 });
-    y += 22;
+    doc.rect(L, y, contentW, rH).fill('#f97316');
+    doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
+      .text('DESCRIPTION', L + 10, y + 6, { width: 280, lineBreak: false })
+      .text('QTY', colQtyX, y + 6, { width: colQtyW, align: 'center', lineBreak: false })
+      .text('RATE', colRateX, y + 6, { width: colRateW, align: 'right', lineBreak: false })
+      .text('AMOUNT', colAmtX, y + 6, { width: colAmtW, align: 'right', lineBreak: false });
+    y += rH;
 
     (invoice.items || []).forEach((item, i) => {
-      if (i % 2 === 0) doc.rect(50, y, 495, 20).fill('#f8fafc');
-      const qty = item.qty || 1;
+      if (i % 2 === 0) doc.rect(L, y, contentW, rH).fill('#f8fafc');
+      const qty = item.qty || item.quantity || 1;
+      const amt = qty * (item.rate || 0);
       doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
-        .text(item.description || '', 60, y + 4, { width: 270 })
-        .text(String(qty), 340, y + 4, { width: 50, align: 'center' })
-        .text(`₹${Number(item.rate || 0).toLocaleString('en-IN')}`, 400, y + 4, { width: 70, align: 'right' })
-        .text(`₹${Number(qty * (item.rate || 0)).toLocaleString('en-IN')}`, 480, y + 4, { align: 'right', width: 55 });
-      doc.moveTo(50, y + 20).lineTo(545, y + 20).strokeColor('#f1f5f9').stroke();
-      y += 20;
+        .text(item.description || '-', L + 10, y + 6, { width: 280, lineBreak: false })
+        .text(String(qty), colQtyX, y + 6, { width: colQtyW, align: 'center', lineBreak: false })
+        .text(`Rs.${Number(item.rate || 0).toLocaleString('en-IN')}`, colRateX, y + 6, { width: colRateW, align: 'right', lineBreak: false })
+        .text(`Rs.${Number(amt).toLocaleString('en-IN')}`, colAmtX, y + 6, { width: colAmtW, align: 'right', lineBreak: false });
+      doc.moveTo(L, y + rH).lineTo(R, y + rH).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+      y += rH;
     });
 
-    // Totals
-    y += 10;
-    const rowT = (label, value, bold = false) => {
-      if (bold) doc.rect(50, y, 495, 28).fill('#16a34a');
-      doc.fillColor(bold ? '#ffffff' : '#1e293b').fontSize(bold ? 12 : 10).font(bold ? 'Helvetica-Bold' : 'Helvetica')
-        .text(label, 60, y + (bold ? 8 : 4))
-        .text(`₹${Number(value).toLocaleString('en-IN')}`, 480, y + (bold ? 8 : 4), { align: 'right', width: 55 });
-      y += bold ? 38 : 20;
+    // â”€â”€ TOTALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    doc.moveTo(L, y + 2).lineTo(R, y + 2).strokeColor('#94a3b8').lineWidth(1).stroke();
+    y += 8;
+
+    const srow = (label, amount, bold = false, bg = null) => {
+      if (bg) doc.rect(L, y, contentW, rH).fill(bg);
+      doc.fillColor(bg === '#f97316' ? '#ffffff' : '#475569')
+        .fontSize(bold ? 11 : 10).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+        .text(label, L + 10, y + 6, { lineBreak: false })
+        .text('Rs.' + Number(amount).toLocaleString('en-IN'), colAmtX, y + 6, { width: colAmtW, align: 'right', lineBreak: false });
+      y += rH;
     };
-    rowT('Subtotal', invoice.subtotal || 0);
-    if (invoice.tax) rowT('GST', invoice.tax);
-    if (invoice.discount) rowT('Discount', -(invoice.discount));
-    rowT('INVOICE TOTAL', invoice.total || 0, true);
 
-    if (invoice.budget > 0 || siblingInvoices.length > 0) {
-      y += 8;
-      doc.rect(50, y, 495, 22).fill('#1e3a5f');
-      doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text('PAYMENT SCHEDULE', 60, y + 6); y += 22;
+    srow('Subtotal', invoice.subtotal || 0);
+    if (invoice.tax) srow('GST', invoice.tax, false, '#f8fafc');
+    if (invoice.discount) srow('Discount', -invoice.discount);
+    y += 4;
+    doc.rect(L, y, contentW, 28).fill('#f97316');
+    doc.fillColor('#ffffff').fontSize(12).font('Helvetica-Bold')
+      .text('INVOICE TOTAL', L + 10, y + 8, { lineBreak: false })
+      .text('Rs.' + Number(invoice.total || 0).toLocaleString('en-IN'), colAmtX, y + 8, { width: colAmtW, align: 'right', lineBreak: false });
 
-      // Header row
-      doc.rect(50, y, 495, 18).fill('#f0f4ff');
+    // â”€â”€ PAYMENT SCHEDULE (if siblings) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    if (siblingInvoices.length > 0) {
+      doc.rect(L, y, contentW, 20).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+        .text('PAYMENT SCHEDULE', L + 10, y + 5, { lineBreak: false });
+      y += 20;
+
+      doc.rect(L, y, contentW, 16).fill('#f0f4ff');
       doc.fillColor('#475569').fontSize(8).font('Helvetica-Bold')
-        .text('INSTALLMENT', 60, y + 4)
-        .text('AMOUNT', 280, y + 4, { width: 80, align: 'right' })
-        .text('STATUS', 370, y + 4, { width: 70, align: 'center' })
-        .text('PAID', 450, y + 4, { width: 80, align: 'right' });
-      y += 18;
+        .text('INSTALLMENT', L + 10, y + 4, { lineBreak: false })
+        .text('AMOUNT', L + 260, y + 4, { width: 80, align: 'right', lineBreak: false })
+        .text('STATUS', L + 350, y + 4, { width: 70, align: 'center', lineBreak: false })
+        .text('PAID', colAmtX, y + 4, { width: colAmtW, align: 'right', lineBreak: false });
+      y += 16;
 
-      const invoicesToShow = siblingInvoices.length > 0 ? siblingInvoices : [invoice];
-      let grandTotalPaid = 0;
-
-      invoicesToShow.forEach((inv, i) => {
+      let grandPaid = 0;
+      siblingInvoices.forEach((inv, i) => {
         const isCurrent = String(inv._id) === String(invoice._id);
         const instPaid = (inv.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
-        grandTotalPaid += instPaid;
-
-        if (isCurrent) doc.rect(50, y, 495, 20).fill('#fefce8');
-        else if (i % 2 === 0) doc.rect(50, y, 495, 20).fill('#f8fafc');
-
-        const statusColor = inv.status === 'paid' ? '#16a34a' : inv.status === 'partial' ? '#d97706' : '#64748b';
-        const label = inv.installmentLabel || inv.invoiceNumber || `Installment ${i + 1}`;
-
-        doc.fillColor(isCurrent ? '#92400e' : '#1e293b').fontSize(9).font(isCurrent ? 'Helvetica-Bold' : 'Helvetica')
-          .text(`${label}${isCurrent ? ' ◀ THIS' : ''}`, 60, y + 5, { width: 210 })
-          .text(`₹${Number(inv.total || 0).toLocaleString('en-IN')}`, 280, y + 5, { width: 80, align: 'right' });
-        doc.fillColor(statusColor).fontSize(9).font('Helvetica-Bold')
-          .text((inv.status || 'draft').toUpperCase(), 370, y + 5, { width: 70, align: 'center' });
-        doc.fillColor('#16a34a').fontSize(9).font('Helvetica')
-          .text(`₹${instPaid.toLocaleString('en-IN')}`, 450, y + 5, { width: 80, align: 'right' });
-        doc.moveTo(50, y + 20).lineTo(545, y + 20).strokeColor('#e2e8f0').stroke();
-        y += 20;
+        grandPaid += instPaid;
+        if (isCurrent) doc.rect(L, y, contentW, 16).fill('#fefce8');
+        else if (i % 2 === 0) doc.rect(L, y, contentW, 16).fill('#f8fafc');
+        const statusColor = inv.status === 'paid' ? '#f97316' : inv.status === 'partial' ? '#d97706' : '#64748b';
+        doc.fillColor(isCurrent ? '#92400e' : '#1e293b').fontSize(8.5).font(isCurrent ? 'Helvetica-Bold' : 'Helvetica')
+          .text(`${inv.installmentLabel || inv.invoiceNumber}${isCurrent ? ' â—€' : ''}`, L + 10, y + 3, { width: 240, lineBreak: false })
+          .text(`Rs. ${Number(inv.total || 0).toLocaleString('en-IN')}`, L + 260, y + 3, { width: 80, align: 'right', lineBreak: false });
+        doc.fillColor(statusColor).fontSize(8.5).font('Helvetica-Bold')
+          .text((inv.status || 'draft').toUpperCase(), L + 350, y + 3, { width: 70, align: 'center', lineBreak: false });
+        doc.fillColor('#f97316').fontSize(8.5).font('Helvetica')
+          .text(`Rs. ${instPaid.toLocaleString('en-IN')}`, colAmtX, y + 3, { width: colAmtW, align: 'right', lineBreak: false });
+        doc.moveTo(L, y + 16).lineTo(R, y + 16).strokeColor('#e2e8f0').lineWidth(0.3).stroke();
+        y += 16;
       });
 
-      // Totals row
-      y += 4;
-      const totalBudget = invoice.budget || invoicesToShow.reduce((s, inv) => s + (inv.total || 0), 0);
-      const totalRemaining = Math.max(0, totalBudget - grandTotalPaid);
-
-      doc.rect(50, y, 495, 20).fill('#f0fdf4');
-      doc.fillColor('#166534').fontSize(9).font('Helvetica-Bold')
-        .text('PROJECT TOTAL', 60, y + 5)
-        .text(`₹${totalBudget.toLocaleString('en-IN')}`, 280, y + 5, { width: 80, align: 'right' });
-      doc.fillColor('#16a34a').fontSize(9).font('Helvetica-Bold')
-        .text(`₹${grandTotalPaid.toLocaleString('en-IN')}`, 450, y + 5, { width: 80, align: 'right' });
+      const grandTotal = siblingInvoices.reduce((s, x) => s + (x.total || 0), 0);
+      const remaining = Math.max(0, grandTotal - grandPaid);
+      doc.rect(L, y, contentW, 16).fill('#fff7ed');
+      doc.fillColor('#c2410c').fontSize(8.5).font('Helvetica-Bold')
+        .text('PROJECT TOTAL', L + 10, y + 3, { lineBreak: false })
+        .text(`Rs. ${grandTotal.toLocaleString('en-IN')}`, L + 260, y + 3, { width: 80, align: 'right', lineBreak: false })
+        .text(`Rs. ${grandPaid.toLocaleString('en-IN')}`, colAmtX, y + 3, { width: colAmtW, align: 'right', lineBreak: false });
+      y += 16;
+      doc.rect(L, y, contentW, 16).fill('#fef2f2');
+      doc.fillColor('#dc2626').fontSize(8.5).font('Helvetica-Bold')
+        .text('REMAINING BALANCE', L + 10, y + 3, { lineBreak: false })
+        .text(`Rs. ${remaining.toLocaleString('en-IN')}`, colAmtX, y + 3, { width: colAmtW, align: 'right', lineBreak: false });
       y += 20;
-
-      doc.rect(50, y, 495, 20).fill('#fef2f2');
-      doc.fillColor('#dc2626').fontSize(9).font('Helvetica-Bold')
-        .text('REMAINING BALANCE', 60, y + 5)
-        .text(`₹${totalRemaining.toLocaleString('en-IN')}`, 450, y + 5, { width: 80, align: 'right' });
-      y += 24;
     }
 
+    // â”€â”€ PAYMENT HISTORY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ((invoice.payments || []).length > 0) {
-      y += 12;
-      doc.font('Helvetica-Bold').fontSize(11).fillColor('#1e293b').text('Payment History', 50, y); y += 16;
-      doc.rect(50, y, 495, 20).fill('#f8fafc');
-      doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold')
-        .text('DATE', 60, y + 5).text('METHOD', 180, y + 5).text('REFERENCE', 310, y + 5).text('AMOUNT', 480, y + 5, { align: 'right', width: 55 });
-      y += 20;
-      invoice.payments.forEach(p => {
+      y += 6;
+      doc.rect(L, y, contentW, 18).fill('#fff7ed');
+      doc.fillColor('#c2410c').fontSize(9).font('Helvetica-Bold').text('PAYMENT HISTORY', L + 10, y + 4, { lineBreak: false });
+      y += 18;
+      invoice.payments.forEach((p, i) => {
+        if (i % 2 === 0) doc.rect(L, y, contentW, 16).fill('#f8fafc');
         doc.fillColor('#1e293b').fontSize(9).font('Helvetica')
-          .text(p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—', 60, y + 3)
-          .text((p.method || '').replace('_', ' '), 180, y + 3)
-          .text(p.reference || '—', 310, y + 3)
-          .text(`₹${Number(p.amount || 0).toLocaleString('en-IN')}`, 480, y + 3, { align: 'right', width: 55 });
-        y += 18;
+          .text(p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'â€”', L + 10, y + 3, { lineBreak: false })
+          .text((p.method || '').replace('_', ' '), L + 120, y + 3, { lineBreak: false })
+          .text(p.reference || 'â€”', L + 240, y + 3, { lineBreak: false });
+        doc.fillColor('#f97316').fontSize(9).font('Helvetica-Bold')
+          .text(`Rs. ${Number(p.amount || 0).toLocaleString('en-IN')}`, colAmtX, y + 3, { width: colAmtW, align: 'right', lineBreak: false });
+        y += 16;
       });
+      y += 4;
     }
 
+    // â”€â”€ NOTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (invoice.notes) {
-      y += 10;
-      doc.fillColor('#64748b').fontSize(10).font('Helvetica-Bold').text('Notes:', 50, y);
-      doc.font('Helvetica').text(invoice.notes, 50, y + 14, { width: 495 });
+      doc.rect(L, y, contentW, 16).fill('#fef9c3');
+      doc.fillColor('#854d0e').fontSize(9).font('Helvetica-Bold').text('NOTES', L + 10, y + 3, { lineBreak: false });
+      y += 16;
+      doc.fillColor('#1e293b').fontSize(9).font('Helvetica')
+        .text(invoice.notes, L + 10, y + 3, { width: contentW - 20, lineBreak: false });
+      y += 18;
     }
 
-    const footerY = doc.page.height - 55;
-    doc.moveTo(50, footerY - 10).lineTo(545, footerY - 10).strokeColor('#e2e8f0').stroke();
+    // â”€â”€ SIGNATURE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    y += 10;
+    doc.moveTo(L, y).lineTo(L + 160, y).strokeColor('#94a3b8').lineWidth(0.8).stroke();
+    doc.moveTo(R - 160, y).lineTo(R, y).strokeColor('#94a3b8').lineWidth(0.8).stroke();
     doc.fillColor('#94a3b8').fontSize(9).font('Helvetica')
-      .text('Parnets Software India Pvt Ltd | Computer-generated invoice.', 50, footerY, { align: 'center', width: 495 })
-      .text('No. 12, Tech Park, Anna Nagar, Chennai - 600040 | billing@parnets.in', 50, footerY + 14, { align: 'center', width: 495 });
+      .text('Authorized Signature', L, y + 4, { width: 160, align: 'center', lineBreak: false })
+      .text('Client Signature', R - 160, y + 4, { width: 160, align: 'center', lineBreak: false });
+
+    // â”€â”€ FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const fY = pageH - 30;
+    doc.rect(0, fY, pageW, 30).fill('#1e3a8a');
+    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+      .text('ParNets Software India Pvt Ltd', L, fY + 6, { lineBreak: false });
+    doc.fillColor('#fff7ed').fontSize(8).font('Helvetica')
+      .text('This is a computer-generated invoice and does not require a physical signature.',
+        L, fY + 18, { align: 'center', width: contentW, lineBreak: false });
 
     doc.end();
   } catch (e) {
@@ -545,3 +940,6 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
 });
 
 export default router;
+
+
+

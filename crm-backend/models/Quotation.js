@@ -16,11 +16,13 @@ const quotationSchema = new mongoose.Schema({
     ref: 'Project',
     required: [true, 'Project is required'],
   },
+  projectName: { type: String, default: '' },
   client: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Client',
     required: [true, 'Client is required'],
   },
+  clientName: { type: String, default: '' },
   totalBudget: {
     type: Number,
     default: 0,
@@ -59,6 +61,9 @@ const quotationSchema = new mongoose.Schema({
   paymentTerms: {
     type: String,
     trim: true,
+  },
+  projectStartDate: {
+    type: Date,
   },
   validUntil: {
     type: Date,

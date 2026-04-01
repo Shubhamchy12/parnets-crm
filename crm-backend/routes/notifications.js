@@ -7,14 +7,29 @@ const router = express.Router();
 // GET /api/notifications — get own notifications
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { unreadOnly } = req.query;
+    const { unreadOnly, page = 1, limit = 20 } = req.query;
     const query = { recipient: req.user._id };
     if (unreadOnly === 'true') query.read = false;
 
-    const notifications = await Notification.find(query).sort({ createdAt: -1 }).limit(50);
+    const total = await Notification.countDocuments(query);
+    const notifications = await Notification.find(query)
+      .sort({ createdAt: -1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit);
     const unreadCount = await Notification.countDocuments({ recipient: req.user._id, read: false });
 
-    res.json({ success: true, data: { notifications, unreadCount } });
+    res.json({ 
+      success: true, 
+      data: { 
+        notifications, 
+        unreadCount,
+        pagination: { 
+          current: +page, 
+          pages: Math.ceil(total / limit), 
+          total 
+        }
+      } 
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

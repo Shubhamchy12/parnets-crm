@@ -104,11 +104,16 @@ router.get('/:id/face', authenticate, async (req, res) => {
 // GET /api/employees/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
+    const isAdmin = ['super_admin', 'admin'].includes(req.user.role);
+    const isSelf  = req.user._id.toString() === req.params.id;
+    // Employee can only view their own profile; admins/sales can view any
+    if (!isAdmin && req.user.role !== 'sales' && !isSelf)
+      return res.status(403).json({ success: false, message: 'Not authorised' });
+
     const employee = await User.findOne({ _id: req.params.id, role: { $nin: NON_EMPLOYEE_ROLES } })
       .select('-password +faceDescriptor');
     if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
     const obj = employee.toObject();
-    // Don't expose raw descriptor — just flag whether it's enrolled
     obj.faceEnrolled = !!obj.faceDescriptor;
     delete obj.faceDescriptor;
     res.json({ success: true, data: { employee: obj } });
@@ -118,7 +123,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // POST /api/employees/register — multipart: employee data + documents + bank details
-router.post('/register', authenticate, authorize('super_admin', 'admin'), docFields, async (req, res) => {
+router.post('/register', authenticate, authorize('super_admin', 'admin', 'employee'), docFields, async (req, res) => {
   try {
     const { name, email, password, role, department, designation, phone, salary, joiningDate, facePhoto, faceDescriptor,
             bankName, accountHolderName, accountNumber, ifscCode, branchName } = req.body;
@@ -199,7 +204,7 @@ router.post('/', authenticate, authorize('super_admin', 'admin'), async (req, re
 });
 
 // PUT /api/employees/:id/full — multipart update (same fields as register)
-router.put('/:id/full', authenticate, authorize('super_admin', 'admin'), docFields, async (req, res) => {
+router.put('/:id/full', authenticate, authorize('super_admin', 'admin', 'employee'), docFields, async (req, res) => {
   try {
     const { name, phone, role, department, designation, employeeId, joiningDate, salary, status,
             bankName, accountHolderName, accountNumber, ifscCode, branchName } = req.body;
