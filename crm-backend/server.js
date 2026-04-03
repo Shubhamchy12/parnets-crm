@@ -38,9 +38,12 @@ import serviceRoutes from './routes/services.js';
 import quotationRoutes from './routes/quotations.js';
 import quoteRoutes from './routes/quotes.js';
 import emailService from './services/emailService.js';
+import whatsappService from './services/whatsappService.js';
 
-// Initialize email service
+// Initialize services
 console.log('📧 Initializing email service...');
+console.log('📱 Initializing WhatsApp service...');
+whatsappService.initialize();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
