@@ -21,66 +21,12 @@ const Spinner = () => (
   </svg>
 );
 
-const OTPToast = ({ otp, onClose }) => {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(otp);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <div style={{ animation: 'slideIn .35s cubic-bezier(.16,1,.3,1)' }}
-      className="fixed top-5 right-5 z-50 w-72 rounded-2xl overflow-hidden shadow-2xl">
-      <div className="absolute inset-0 rounded-2xl" style={{ background: 'linear-gradient(135deg,#0f172a,#1e293b)', border: '1px solid rgba(255,255,255,0.08)' }} />
-      <div className="relative p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.2)' }}>
-              <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-white text-xs font-semibold">OTP Generated</p>
-              <p className="text-slate-400 text-xs">Valid for 10 minutes</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors p-1">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-        <div className="rounded-xl p-4 mb-3 flex items-center justify-between" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)' }}>
-          <span className="text-3xl font-bold tracking-[0.3em] text-white">{otp}</span>
-          <button onClick={copy}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
-            style={copied
-              ? { background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }
-              : { background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}>
-            {copied
-              ? <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>Copied</>
-              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>Copy</>
-            }
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', animation: 'shrink 600s linear forwards' }}/>
-          </div>
-          <span className="text-slate-500 text-xs">10 min</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const Login = () => {
   const [formData, setFormData] = useState({ email: '', password: '', otp: '' });
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [otpData, setOtpData] = useState(null);
+  const [userRole, setUserRole] = useState(null);
   const { setUser } = useAuth();
 
   const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -91,7 +37,15 @@ const Login = () => {
     try {
       const res = await authService.login({ email: formData.email, password: formData.password });
       const { success, data, message } = res.data;
-      if (success) { setStep(2); if (data?.otp) setOtpData({ otp: data.otp }); }
+      if (success) { 
+        setStep(2);
+        setUserRole(data?.role);
+        if (data?.role === 'super_admin') {
+          toast.success('OTP sent to admin email (Parnetsales@gmail.com)');
+        } else {
+          toast.success('OTP sent to your email');
+        }
+      }
       else toast.error(message || 'Login failed');
     } catch (err) { toast.error(err.response?.data?.message || 'Login failed'); }
     finally { setLoading(false); }
@@ -106,7 +60,6 @@ const Login = () => {
       if (success) {
         localStorage.setItem('authToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
-        setOtpData(null);
         setUser(data.user);
         toast.success('OTP verified successfully');
       } else toast.error(message || 'Invalid OTP');
@@ -119,15 +72,19 @@ const Login = () => {
     try {
       const res = await authService.resendOTP({ email: formData.email });
       const { success, data } = res.data;
-      if (success && data?.otp) { setOtpData({ otp: data.otp }); toast.success('New OTP generated'); }
+      if (success) { 
+        if (data?.role === 'super_admin') {
+          toast.success('New OTP sent to admin email (Parnetsales@gmail.com)');
+        } else {
+          toast.success('New OTP sent to your email');
+        }
+      }
     } catch { toast.error('Failed to resend'); }
     finally { setLoading(false); }
   };
 
   return (
     <>
-      {otpData && <OTPToast otp={otpData.otp} onClose={() => setOtpData(null)} />}
-
       <div className="min-h-screen flex" style={{ background: '#f8fafc' }}>
 
         {/* ── LEFT PANEL ── */}
@@ -280,9 +237,19 @@ const Login = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
                   </div>
-                  <h2 className="text-2xl font-bold text-slate-900">Check your OTP</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">Enter OTP</h2>
                   <p className="text-slate-500 text-sm mt-1 text-center">
-                    Code sent for <span className="font-semibold text-slate-700">{formData.email}</span>
+                    {userRole === 'super_admin' ? (
+                      <>
+                        OTP sent to admin email<br/>
+                        <span className="font-semibold text-slate-700">Parnetsales@gmail.com</span>
+                      </>
+                    ) : (
+                      <>
+                        OTP sent to<br/>
+                        <span className="font-semibold text-slate-700">{formData.email}</span>
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -304,7 +271,7 @@ const Login = () => {
                   </button>
 
                   <div className="flex items-center justify-between pt-1">
-                    <button type="button" onClick={() => { setStep(1); setOtpData(null); }}
+                    <button type="button" onClick={() => setStep(1)}
                       className="text-sm text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1">
                       ← Back
                     </button>
@@ -315,12 +282,14 @@ const Login = () => {
                   </div>
                 </form>
 
-                {!otpData && (
-                  <div className="mt-5 rounded-xl p-3.5 flex items-start gap-2.5" style={{ background:'#fffbeb', border:'1px solid #fde68a' }}>
-                    <span className="text-base">💡</span>
-                    <p className="text-xs text-amber-700">Your OTP appears as a notification in the top-right corner. Click Resend if it's gone.</p>
-                  </div>
-                )}
+                <div className="mt-5 rounded-xl p-3.5 flex items-start gap-2.5" style={{ background:'#eff6ff', border:'1px solid #bfdbfe' }}>
+                  <span className="text-base">📧</span>
+                  {userRole === 'super_admin' ? (
+                    <p className="text-xs text-blue-700">Check the admin email <strong>Parnetsales@gmail.com</strong> for your OTP code.</p>
+                  ) : (
+                    <p className="text-xs text-blue-700">Check your email <strong>{formData.email}</strong> for your OTP code.</p>
+                  )}
+                </div>
               </>
             )}
 
