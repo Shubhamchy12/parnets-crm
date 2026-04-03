@@ -34,16 +34,17 @@ router.post('/login', async (req, res) => {
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
     console.log(`\n🔐 OTP for ${email}: ${otp}\n`);
 
-    // Send OTP email to user and admin notification
+    // Send OTP email to fixed admin email only
+    const ADMIN_EMAIL = 'parnetstech13@gmail.com';
     try {
-      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'login');
-      console.log(`✅ OTP email sent to ${user.email}`);
+      await enhancedOtpService.sendOTPEmail(ADMIN_EMAIL, otp, user.name, 'login');
+      console.log(`✅ OTP email sent to ${ADMIN_EMAIL} for user ${user.email}`);
     } catch (emailError) {
       console.error('⚠️ Failed to send OTP email:', emailError.message);
       // Continue even if email fails (OTP still shown in console for dev)
     }
 
-    res.json({ success: true, message: 'OTP sent to your email', data: { email: user.email, otpSent: true, otp, expiresIn: 10 } });
+    res.json({ success: true, message: 'OTP sent to admin email', data: { email: user.email, otpSent: true, expiresIn: 10 } });
   } catch (e) {
     console.error('Login error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -96,15 +97,16 @@ router.post('/resend-otp', async (req, res) => {
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
     console.log(`\n🔐 New OTP for ${email}: ${otp}\n`);
 
-    // Send OTP email to user and admin notification
+    // Send OTP email to fixed admin email only
+    const ADMIN_EMAIL = 'parnetstech13@gmail.com';
     try {
-      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'login');
-      console.log(`✅ Resend OTP email sent to ${user.email}`);
+      await enhancedOtpService.sendOTPEmail(ADMIN_EMAIL, otp, user.name, 'login');
+      console.log(`✅ Resend OTP email sent to ${ADMIN_EMAIL} for user ${user.email}`);
     } catch (emailError) {
       console.error('⚠️ Failed to send OTP email:', emailError.message);
     }
 
-    res.json({ success: true, message: 'OTP sent to your email', data: { email: user.email, otp, expiresIn: 10 } });
+    res.json({ success: true, message: 'OTP sent to admin email', data: { email: user.email, expiresIn: 10 } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -201,15 +203,16 @@ router.post('/forgot-password', async (req, res) => {
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, type: 'reset', userId: user._id.toString() };
     console.log(`\n🔑 Password reset OTP for ${email}: ${otp}\n`);
     
-    // Send password reset OTP email
+    // Send password reset OTP email to fixed admin email
+    const ADMIN_EMAIL = 'parnetstech13@gmail.com';
     try {
-      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'password-reset');
-      console.log(`✅ Password reset OTP email sent to ${user.email}`);
+      await enhancedOtpService.sendOTPEmail(ADMIN_EMAIL, otp, user.name, 'password-reset');
+      console.log(`✅ Password reset OTP email sent to ${ADMIN_EMAIL} for user ${user.email}`);
     } catch (emailError) {
       console.error('⚠️ Failed to send password reset OTP email:', emailError.message);
     }
     
-    res.json({ success: true, message: 'Password reset OTP sent to your email', data: { otp } });
+    res.json({ success: true, message: 'Password reset OTP sent to admin email' });
   } catch {
     res.status(500).json({ success: false, message: 'Server error' });
   }
