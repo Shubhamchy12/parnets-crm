@@ -108,7 +108,7 @@ const Login = () => {
         localStorage.setItem('refreshToken', data.refreshToken);
         setOtpData(null);
         setUser(data.user);
-        toast.success('Welcome!');
+        toast.success('OTP verified successfully');
       } else toast.error(message || 'Invalid OTP');
     } catch (err) { toast.error(err.response?.data?.message || 'Verification failed'); }
     finally { setLoading(false); }

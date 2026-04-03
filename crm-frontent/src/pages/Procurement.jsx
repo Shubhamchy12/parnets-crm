@@ -55,6 +55,7 @@ const Procurement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [viewMode, setViewMode] = useState(false);
   const [selectedProcurement, setSelectedProcurement] = useState(null);
   const [formData, setFormData] = useState({ ...EMPTY_FORM, poNumber: generatePONumber() });
 
@@ -99,9 +100,65 @@ const Procurement = () => {
   const resetForm = () => {
     setFormData({ ...EMPTY_FORM, poNumber: generatePONumber() });
     setSelectedProcurement(null);
+    setViewMode(false);
   };
 
-  const openModal = () => { resetForm(); setShowModal(true); };
+  const openModal = () => { 
+    resetForm(); 
+    setViewMode(false);
+    setShowModal(true); 
+  };
+
+  const handleView = (procurement) => {
+    setSelectedProcurement(procurement);
+    setFormData({
+      poNumber: procurement.poNumber || '',
+      clientId: procurement.client?._id || procurement.client || '',
+      clientName: procurement.clientName || procurement.client?.company || procurement.client?.name || '',
+      category: procurement.category || 'mobile_app',
+      items: procurement.title || '',
+      quantity: procurement.quantity || 1,
+      unitPrice: procurement.unitPrice || '',
+      totalAmount: procurement.totalAmount || '',
+      status: procurement.status || 'pending',
+      orderDate: procurement.orderDate ? new Date(procurement.orderDate).toISOString().split('T')[0] : '',
+      expectedDelivery: procurement.expectedDelivery ? new Date(procurement.expectedDelivery).toISOString().split('T')[0] : '',
+      description: procurement.description || procurement.notes || '',
+    });
+    setViewMode(true);
+    setShowModal(true);
+  };
+
+  const handleEdit = (procurement) => {
+    setSelectedProcurement(procurement);
+    setFormData({
+      poNumber: procurement.poNumber || '',
+      clientId: procurement.client?._id || procurement.client || '',
+      clientName: procurement.clientName || procurement.client?.company || procurement.client?.name || '',
+      category: procurement.category || 'mobile_app',
+      items: procurement.title || '',
+      quantity: procurement.quantity || 1,
+      unitPrice: procurement.unitPrice || '',
+      totalAmount: procurement.totalAmount || '',
+      status: procurement.status || 'pending',
+      orderDate: procurement.orderDate ? new Date(procurement.orderDate).toISOString().split('T')[0] : '',
+      expectedDelivery: procurement.expectedDelivery ? new Date(procurement.expectedDelivery).toISOString().split('T')[0] : '',
+      description: procurement.description || procurement.notes || '',
+    });
+    setViewMode(false);
+    setShowModal(true);
+  };
+
+  const handleDelete = async (procurement) => {
+    if (!window.confirm(`Are you sure you want to delete PO ${procurement.poNumber}?`)) return;
+    try {
+      await api.delete(`/procurement/${procurement._id}`);
+      toast.success('Purchase order deleted');
+      loadProcurements();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -284,9 +341,27 @@ const Procurement = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900"><Eye className="h-4 w-4" /></button>
-                        <button className="text-green-600 hover:text-green-900"><Edit className="h-4 w-4" /></button>
-                        <button className="text-red-600 hover:text-red-900"><Trash2 className="h-4 w-4" /></button>
+                        <button 
+                          onClick={() => handleView(p)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleEdit(p)}
+                          className="text-green-600 hover:text-green-900"
+                          title="Edit"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(p)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -303,7 +378,7 @@ const Procurement = () => {
           <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="bg-gradient-to-r from-blue-600 to-orange-500 text-white p-6 rounded-t-lg">
               <h2 className="text-xl font-bold">
-                {selectedProcurement ? 'Edit Purchase Order' : 'Create New Purchase Order'}
+                {viewMode ? 'View Purchase Order' : selectedProcurement ? 'Edit Purchase Order' : 'Create New Purchase Order'}
               </h2>
             </div>
 
@@ -320,11 +395,13 @@ const Procurement = () => {
                     <div className="flex gap-2">
                       <input type="text" name="poNumber" value={formData.poNumber}
                         onChange={handleChange} className="input-field flex-1" readOnly required />
-                      <button type="button"
-                        onClick={() => setFormData(p => ({ ...p, poNumber: generatePONumber() }))}
-                        className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors">
-                        Generate
-                      </button>
+                      {!viewMode && (
+                        <button type="button"
+                          onClick={() => setFormData(p => ({ ...p, poNumber: generatePONumber() }))}
+                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors">
+                          Generate
+                        </button>
+                      )}
                     </div>
                     <p className="text-xs text-gray-400 mt-1">Auto-generated PO number</p>
                   </div>
@@ -333,7 +410,7 @@ const Procurement = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Select Client *</label>
                     <select name="clientId" value={formData.clientId} onChange={handleChange}
-                      className="input-field" required>
+                      className="input-field" required disabled={viewMode}>
                       <option value="">Choose a client...</option>
                       {clients.map(c => (
                         <option key={c._id} value={c._id}>
@@ -347,7 +424,7 @@ const Procurement = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Service Category *</label>
                     <select name="category" value={formData.category} onChange={handleChange}
-                      className="input-field" required>
+                      className="input-field" required disabled={viewMode}>
                       {CATEGORIES.map(c => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
@@ -358,7 +435,7 @@ const Procurement = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
                     <select name="status" value={formData.status} onChange={handleChange}
-                      className="input-field" required>
+                      className="input-field" required disabled={viewMode}>
                       <option value="pending">Pending</option>
                       <option value="in_progress">In Progress</option>
                       <option value="completed">Completed</option>
@@ -372,14 +449,14 @@ const Procurement = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Order Date *</label>
                     <input type="date" name="orderDate" value={formData.orderDate}
-                      onChange={handleChange} className="input-field" required />
+                      onChange={handleChange} className="input-field" required disabled={viewMode} />
                   </div>
 
                   {/* Expected Delivery */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery *</label>
                     <input type="date" name="expectedDelivery" value={formData.expectedDelivery}
-                      onChange={handleChange} className="input-field" required />
+                      onChange={handleChange} className="input-field" required disabled={viewMode} />
                   </div>
                 </div>
               </div>
@@ -390,7 +467,7 @@ const Procurement = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Service / Items Description *</label>
                 <textarea name="items" value={formData.items} onChange={handleChange}
                   className="input-field" rows={3}
-                  placeholder="Describe the service or items being procured..." required />
+                  placeholder="Describe the service or items being procured..." required disabled={viewMode} />
               </div>
 
               {/* Pricing */}
@@ -402,13 +479,13 @@ const Procurement = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                     <input type="number" name="quantity" value={formData.quantity}
-                      onChange={handleChange} className="input-field" min="1" required />
+                      onChange={handleChange} className="input-field" min="1" required disabled={viewMode} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (₹) *</label>
                     <input type="number" name="unitPrice" value={formData.unitPrice}
                       onChange={handleChange} className="input-field" min="0" step="any"
-                      placeholder="0" required />
+                      placeholder="0" required disabled={viewMode} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount (₹)</label>
@@ -430,15 +507,19 @@ const Procurement = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
                 <textarea name="description" value={formData.description} onChange={handleChange}
-                  className="input-field" rows={3} placeholder="Any additional notes or requirements..." />
+                  className="input-field" rows={3} placeholder="Any additional notes or requirements..." disabled={viewMode} />
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); resetForm(); }}
-                  className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">
-                  {selectedProcurement ? 'Update' : 'Create'} Purchase Order
+                  className="btn-secondary">
+                  {viewMode ? 'Close' : 'Cancel'}
                 </button>
+                {!viewMode && (
+                  <button type="submit" className="btn-primary">
+                    {selectedProcurement ? 'Update' : 'Create'} Purchase Order
+                  </button>
+                )}
               </div>
             </form>
           </div>

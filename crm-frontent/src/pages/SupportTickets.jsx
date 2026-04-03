@@ -20,10 +20,12 @@ import {
   Paperclip
 } from 'lucide-react';
 import api from '../services/api';
+import { clientService } from '../services/clientService';
 import toast from 'react-hot-toast';
 
 const SupportTickets = () => {
   const [tickets, setTickets] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -31,22 +33,30 @@ const SupportTickets = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({
-    ticketNumber: '',
-    title: '',
+    subject: '',
     description: '',
+    client: '',
     clientName: '',
-    clientEmail: '',
     priority: 'medium',
     status: 'open',
-    category: 'technical',
-    assignedTo: '',
-    dueDate: '',
-    tags: []
+    category: ''
   });
 
   useEffect(() => {
     loadTickets();
+    loadClients();
   }, []);
+
+  const loadClients = async () => {
+    try {
+      const response = await clientService.getAll({ limit: 500 });
+      if (response.data?.success) {
+        setClients(response.data.data?.clients || []);
+      }
+    } catch (err) {
+      console.error('Error loading clients:', err);
+    }
+  };
 
   const loadTickets = async () => {
     try {
@@ -67,10 +77,21 @@ const SupportTickets = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // If client is selected, auto-fill clientName
+    if (name === 'client') {
+      const selectedClient = clients.find(c => c._id === value);
+      setFormData(prev => ({
+        ...prev,
+        client: value,
+        clientName: selectedClient ? selectedClient.name : ''
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -78,30 +99,29 @@ const SupportTickets = () => {
     try {
       if (selectedTicket) {
         await api.put(`/tickets/${selectedTicket._id}`, formData);
+        toast.success('Ticket updated successfully');
       } else {
         await api.post('/tickets', formData);
+        toast.success('Ticket created successfully');
       }
       setShowModal(false);
       resetForm();
       loadTickets();
     } catch (err) {
       console.error('Error saving ticket:', err);
+      toast.error('Failed to save ticket');
     }
   };
 
   const resetForm = () => {
     setFormData({
-      ticketNumber: '',
-      title: '',
+      subject: '',
       description: '',
+      client: '',
       clientName: '',
-      clientEmail: '',
       priority: 'medium',
       status: 'open',
-      category: 'technical',
-      assignedTo: '',
-      dueDate: '',
-      tags: []
+      category: ''
     });
     setSelectedTicket(null);
   };
@@ -147,9 +167,9 @@ const SupportTickets = () => {
   };
 
   const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = ticket.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.clientName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (ticket.ticketNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (ticket.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (ticket.clientName || ticket.client?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === '' || ticket.status === statusFilter;
     const matchesPriority = priorityFilter === '' || ticket.priority === priorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;
@@ -285,10 +305,7 @@ const SupportTickets = () => {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Assigned To
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Due Date
+                    Raised By
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -303,7 +320,7 @@ const SupportTickets = () => {
                         <MessageSquare className="h-5 w-5 text-gray-400 mr-2" />
                         <div>
                           <div className="text-sm font-medium text-gray-900">{ticket.ticketNumber}</div>
-                          <div className="text-sm text-gray-500 max-w-xs truncate">{ticket.title}</div>
+                          <div className="text-sm text-gray-500 max-w-xs truncate">{ticket.subject}</div>
                         </div>
                       </div>
                     </td>
@@ -311,8 +328,8 @@ const SupportTickets = () => {
                       <div className="flex items-center">
                         <User className="h-5 w-5 text-gray-400 mr-2" />
                         <div>
-                          <div className="text-sm text-gray-900">{ticket.clientName}</div>
-                          <div className="text-sm text-gray-500">{ticket.clientEmail}</div>
+                          <div className="text-sm text-gray-900">{ticket.clientName || ticket.client?.name || '—'}</div>
+                          <div className="text-sm text-gray-500">{ticket.client?.email || '—'}</div>
                         </div>
                       </div>
                     </td>
@@ -333,10 +350,7 @@ const SupportTickets = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.assignedTo || 'Unassigned'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString() : 'No due date'}
+                      {ticket.raisedByName || '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
@@ -372,22 +386,8 @@ const SupportTickets = () => {
               </h2>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Ticket Number *
-                  </label>
-                  <input
-                    type="text"
-                    name="ticketNumber"
-                    value={formData.ticketNumber}
-                    onChange={handleInputChange}
-                    className="input-field"
-                    required
-                  />
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Priority *
@@ -402,13 +402,47 @@ const SupportTickets = () => {
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    <option value="urgent">Urgent</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Client Name *
+                    Category
+                  </label>
+                  <input
+                    type="text"
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="e.g., Technical, Billing"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Client
+                  </label>
+                  <select
+                    name="client"
+                    value={formData.client}
+                    onChange={handleInputChange}
+                    className="input-field"
+                  >
+                    <option value="">-- Select Client --</option>
+                    {clients.map(client => (
+                      <option key={client._id} value={client._id}>
+                        {client.name} {client.company ? `(${client.company})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Or enter client name manually below</p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Client Name (Manual Entry)
                   </label>
                   <input
                     type="text"
@@ -416,99 +450,23 @@ const SupportTickets = () => {
                     value={formData.clientName}
                     onChange={handleInputChange}
                     className="input-field"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Client Email *
-                  </label>
-                  <input
-                    type="email"
-                    name="clientEmail"
-                    value={formData.clientEmail}
-                    onChange={handleInputChange}
-                    className="input-field"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category *
-                  </label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleInputChange}
-                    className="input-field"
-                    required
-                  >
-                    <option value="technical">Technical</option>
-                    <option value="bug">Bug Report</option>
-                    <option value="feature_request">Feature Request</option>
-                    <option value="support">General Support</option>
-                    <option value="billing">Billing</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status *
-                  </label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
-                    className="input-field"
-                    required
-                  >
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assigned To
-                  </label>
-                  <input
-                    type="text"
-                    name="assignedTo"
-                    value={formData.assignedTo}
-                    onChange={handleInputChange}
-                    className="input-field"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    name="dueDate"
-                    value={formData.dueDate}
-                    onChange={handleInputChange}
-                    className="input-field"
+                    placeholder="Enter client name if not in list"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title *
+                  Subject *
                 </label>
                 <input
                   type="text"
-                  name="title"
-                  value={formData.title}
+                  name="subject"
+                  value={formData.subject}
                   onChange={handleInputChange}
                   className="input-field"
                   required
+                  placeholder="Brief description of the issue"
                 />
               </div>
 
@@ -523,6 +481,7 @@ const SupportTickets = () => {
                   className="input-field"
                   rows="4"
                   required
+                  placeholder="Detailed description of the issue"
                 />
               </div>
 

@@ -28,10 +28,16 @@ const AssignProject = () => {
   const [removeId, setRemoveId] = useState(null);
   const [showWorkPlan, setShowWorkPlan] = useState(false);
   const [dayWisePlans, setDayWisePlans] = useState([{ dateFrom: '', dateTo: '', taskDescription: '' }]);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [credentials, setCredentials] = useState([{ title: '', link: '', userId: '', password: '' }]);
 
   const addDayWisePlan = () => setDayWisePlans(p => [...p, { dateFrom: '', dateTo: '', taskDescription: '' }]);
   const removeDayWisePlan = (i) => setDayWisePlans(p => p.filter((_, idx) => idx !== i));
   const updateDayWisePlan = (i, field, val) => setDayWisePlans(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+
+  const addCredential = () => setCredentials(p => [...p, { title: '', link: '', userId: '', password: '' }]);
+  const removeCredential = (i) => setCredentials(p => p.filter((_, idx) => idx !== i));
+  const updateCredential = (i, field, val) => setCredentials(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
 
   const { data: projects } = useQuery({
     queryKey: ['projects-dropdown'],
@@ -76,6 +82,8 @@ const AssignProject = () => {
       setShowNote(false);
       setShowWorkPlan(false);
       setDayWisePlans([{ dateFrom: '', dateTo: '', taskDescription: '' }]);
+      setShowCredentials(false);
+      setCredentials([{ title: '', link: '', userId: '', password: '' }]);
     },
     onError: (e) => {
       console.error('Assignment error:', e);
@@ -103,6 +111,12 @@ const AssignProject = () => {
     if (showWorkPlan && validPlans.length === 0) {
       return toast.error('Please add at least one complete day-wise plan or remove the work plan section');
     }
+
+    const validCredentials = credentials.filter(c => c.title && (c.link || c.userId || c.password));
+    
+    if (showCredentials && validCredentials.length === 0) {
+      return toast.error('Please add at least one complete credential or remove the credentials section');
+    }
     
     const payload = {
       projectId: form.projectId,
@@ -119,6 +133,9 @@ const AssignProject = () => {
             status: 'pending',
           })),
         },
+      } : {}),
+      ...(showCredentials && validCredentials.length > 0 ? {
+        credentials: validCredentials,
       } : {}),
     };
     
@@ -298,6 +315,93 @@ const AssignProject = () => {
           )}
         </div>
 
+        {/* Credentials */}
+        <div className="mt-3">
+          {!showCredentials ? (
+            <button type="button" onClick={() => setShowCredentials(true)}
+              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-700 font-medium transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add Multiple Credentials
+            </button>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Project Credentials</span>
+                <button type="button" onClick={() => { setShowCredentials(false); setCredentials([{ title: '', link: '', userId: '', password: '' }]); }}
+                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors">
+                  <X className="w-3 h-3" /> Remove All
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                {credentials.map((cred, i) => (
+                  <div key={i} className="crm-card p-4 bg-gradient-to-br from-emerald-50 to-teal-50">
+                    <div className="flex items-start gap-3">
+                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 space-y-3">
+                        {/* Title */}
+                        <div>
+                          <label className="modal-form-label">Title *</label>
+                          <input type="text" value={cred.title}
+                            onChange={e => updateCredential(i, 'title', e.target.value)}
+                            className="modal-input text-sm py-2"
+                            placeholder="e.g., Hosting Panel, Database, API Key..." />
+                        </div>
+                        
+                        {/* Link */}
+                        <div>
+                          <label className="modal-form-label">Link / URL</label>
+                          <input type="text" value={cred.link}
+                            onChange={e => updateCredential(i, 'link', e.target.value)}
+                            className="modal-input text-sm py-2"
+                            placeholder="https://..." />
+                        </div>
+                        
+                        {/* User ID and Password */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="modal-form-label">User ID / Username</label>
+                            <input type="text" value={cred.userId}
+                              onChange={e => updateCredential(i, 'userId', e.target.value)}
+                              className="modal-input text-sm py-2"
+                              placeholder="Username or email..." />
+                          </div>
+                          <div>
+                            <label className="modal-form-label">Password</label>
+                            <input type="text" value={cred.password}
+                              onChange={e => updateCredential(i, 'password', e.target.value)}
+                              className="modal-input text-sm py-2"
+                              placeholder="Password..." />
+                          </div>
+                        </div>
+                        
+                        <div className="text-xs px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+                          <strong>Note:</strong> These credentials will be visible to assigned employees
+                        </div>
+                      </div>
+                      
+                      {credentials.length > 1 && (
+                        <button type="button" onClick={() => removeCredential(i)}
+                          className="p-1.5 text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Add Credential Button at Bottom */}
+                <button type="button" onClick={addCredential}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-400 transition-colors">
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Add Another Credential</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Payment banner */}
         {form.projectId && !invoicesLoading && (
           <div className={`mt-4 flex items-start gap-3 p-4 rounded-xl border text-sm ${paymentReceived ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
@@ -451,11 +555,11 @@ const AssignProject = () => {
                           </div>
 
                           {/* Detail panel */}
-                          {(a.note || wp) && (
+                          {(a.note || wp || (a.project?.credentials && a.project.credentials.length > 0)) && (
                             <div className="px-6 pb-4" style={{ paddingLeft: '3.5rem' }}>
                               <div className="rounded-xl border overflow-hidden text-xs" style={{ borderColor: 'var(--border-1)' }}>
                                 {/* Row 1 */}
-                                <div className="grid divide-x" style={{ borderColor: 'var(--border-1)', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                                <div className="grid divide-x" style={{ borderColor: 'var(--border-1)', gridTemplateColumns: 'repeat(4, 1fr)' }}>
                                   <div className="px-3 py-2.5">
                                     <p className="uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-3)', fontSize: '9px' }}>Assigned</p>
                                     <p className="font-semibold" style={{ color: 'var(--text-1)' }}>{fmtDate(start)}</p>
@@ -469,6 +573,12 @@ const AssignProject = () => {
                                     <p className="uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-3)', fontSize: '9px' }}>Day-wise Plans</p>
                                     <p className="font-semibold" style={{ color: 'var(--text-1)' }}>
                                       {wp?.dayWisePlans?.length || 0} plan{wp?.dayWisePlans?.length !== 1 ? 's' : ''}
+                                    </p>
+                                  </div>
+                                  <div className="px-3 py-2.5">
+                                    <p className="uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-3)', fontSize: '9px' }}>Credentials</p>
+                                    <p className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                                      {a.project?.credentials?.length || 0} item{a.project?.credentials?.length !== 1 ? 's' : ''}
                                     </p>
                                   </div>
                                 </div>
@@ -517,6 +627,50 @@ const AssignProject = () => {
                                   <div className="border-t px-3 py-2.5" style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface2)' }}>
                                     <p className="uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-3)', fontSize: '9px' }}>Note</p>
                                     <p style={{ color: 'var(--text-2)' }}>{a.note}</p>
+                                  </div>
+                                )}
+
+                                {/* Project Credentials */}
+                                {a.project?.credentials && a.project.credentials.length > 0 && (
+                                  <div className="border-t" style={{ borderColor: 'var(--border-1)' }}>
+                                    <div className="px-3 py-1.5 border-b" style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface2)' }}>
+                                      <p className="uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)', fontSize: '9px' }}>Project Credentials ({a.project.credentials.length})</p>
+                                    </div>
+                                    <div className="divide-y" style={{ borderColor: 'var(--border-1)' }}>
+                                      {a.project.credentials.map((cred, ci) => (
+                                        <div key={cred._id || ci} className="px-3 py-2">
+                                          <div className="flex items-start gap-2">
+                                            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                                              {ci + 1}
+                                            </span>
+                                            <div className="flex-1 space-y-1">
+                                              <p className="font-semibold text-emerald-700">{cred.title}</p>
+                                              {cred.link && (
+                                                <div className="flex items-start gap-1.5">
+                                                  <span className="text-slate-500 flex-shrink-0">Link:</span>
+                                                  <a href={cred.link} target="_blank" rel="noreferrer"
+                                                    className="text-indigo-600 hover:text-indigo-800 hover:underline break-all">
+                                                    {cred.link}
+                                                  </a>
+                                                </div>
+                                              )}
+                                              {cred.userId && (
+                                                <div className="flex items-start gap-1.5">
+                                                  <span className="text-slate-500 flex-shrink-0">User ID:</span>
+                                                  <code className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-xs">{cred.userId}</code>
+                                                </div>
+                                              )}
+                                              {cred.password && (
+                                                <div className="flex items-start gap-1.5">
+                                                  <span className="text-slate-500 flex-shrink-0">Password:</span>
+                                                  <code className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-xs">{cred.password}</code>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                               </div>

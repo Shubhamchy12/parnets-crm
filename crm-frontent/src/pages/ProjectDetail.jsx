@@ -293,7 +293,8 @@ const ProjectDetail = () => {
                     <div>Singapura Village, Varadharaja Nagar,</div>
                     <div>Vidyaranyapura, Bengaluru,</div>
                     <div>Karnataka 560097</div>
-                    <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                    <div className="mt-2 font-medium">GST: 29AANCP7155K1ZN</div>
+                    <div className="font-medium">Contact: 095909 26068</div>
                     <div className="text-indigo-600">hello@parnetsgroup.com</div>
                   </div>
                 </div>
@@ -389,6 +390,55 @@ const ProjectDetail = () => {
                   ))}
                 </div>
               ) : <p className="text-sm" style={{ color: 'var(--text-3)' }}>No agreements uploaded yet.</p>}
+            </div>
+          )}
+
+          {/* Project Credentials */}
+          {data?.credentials && data.credentials.length > 0 && (
+            <div className="crm-card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold" style={{ color: 'var(--text-1)' }}>Project Credentials ({data.credentials.length})</h2>
+              </div>
+              <div className="space-y-3">
+                {data.credentials.map((cred, i) => (
+                  <div key={cred._id || i} className="p-4 rounded-xl border" style={{ background: 'var(--bg-surface2)', borderColor: 'var(--border-1)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 space-y-2">
+                        <p className="text-sm font-semibold text-emerald-700">{cred.title}</p>
+                        {cred.link && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>Link:</span>
+                            <a href={cred.link} target="_blank" rel="noreferrer"
+                              className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline break-all">
+                              {cred.link}
+                            </a>
+                          </div>
+                        )}
+                        {cred.userId && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>User ID:</span>
+                            <code className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700 font-mono">{cred.userId}</code>
+                          </div>
+                        )}
+                        {cred.password && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>Password:</span>
+                            <code className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700 font-mono">{cred.password}</code>
+                          </div>
+                        )}
+                        {cred.addedBy && (
+                          <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>
+                            Added by {cred.addedBy.name || 'Admin'} · {cred.addedAt ? format(new Date(cred.addedAt), 'dd MMM yyyy') : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -602,15 +652,6 @@ const ProjectDetail = () => {
                 <FileText className="w-4 h-4 text-amber-500" /> Scope of Work
               </h2>
               <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.scopeOfWork}</p>
-            </div>
-          )}
-
-          {data.termsAndConditions && (
-            <div className="crm-card p-6">
-              <h2 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
-                <FileText className="w-4 h-4 text-blue-500" /> Terms & Conditions
-              </h2>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-2)' }}>{data.termsAndConditions}</p>
             </div>
           )}
 

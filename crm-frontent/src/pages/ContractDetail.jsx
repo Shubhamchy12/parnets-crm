@@ -182,7 +182,8 @@ const ContractDetail = () => {
                       <div>Singapura Village, Varadharaja Nagar,</div>
                       <div>Vidyaranyapura, Bengaluru,</div>
                       <div>Karnataka 560097</div>
-                      <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                      <div className="mt-2 font-medium">GST: 29AANCP7155K1ZN</div>
+                      <div className="font-medium">Contact: 095909 26068</div>
                       <div className="text-indigo-600">hello@parnetsgroup.com</div>
                     </div>
                   </div>

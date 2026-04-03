@@ -398,6 +398,53 @@ const Tasks = () => {
           )}
         </div>
 
+        {/* Project Credentials */}
+        {proj?.credentials && proj.credentials.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold flex items-center gap-2 mb-4" style={{ color: 'var(--text-1)' }}>
+              <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              Project Credentials ({proj.credentials.length})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {proj.credentials.map((cred, i) => (
+                <div key={cred._id || i} className="crm-card p-4 bg-gradient-to-br from-emerald-50 to-teal-50">
+                  <div className="flex items-start gap-3">
+                    <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 text-sm font-bold flex items-center justify-center flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-sm font-bold text-emerald-700">{cred.title}</p>
+                      {cred.link && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-medium text-slate-500 flex-shrink-0">Link:</span>
+                          <a href={cred.link} target="_blank" rel="noreferrer"
+                            className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline break-all">
+                            {cred.link}
+                          </a>
+                        </div>
+                      )}
+                      {cred.userId && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-medium text-slate-500 flex-shrink-0">User ID:</span>
+                          <code className="text-xs px-2 py-1 rounded bg-white text-slate-700 font-mono border border-slate-200">{cred.userId}</code>
+                        </div>
+                      )}
+                      {cred.password && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-medium text-slate-500 flex-shrink-0">Password:</span>
+                          <code className="text-xs px-2 py-1 rounded bg-white text-slate-700 font-mono border border-slate-200">{cred.password}</code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Add Task Modal */}
         {showAddTaskModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

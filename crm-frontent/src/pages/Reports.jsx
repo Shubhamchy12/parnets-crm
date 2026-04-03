@@ -604,12 +604,13 @@ const SupportTab = () => {
         </div>
       )}
       <TableWrap title="Support Tickets" count={list.length}>
-        <TH cols={['Ticket #','Subject','Raised By','Priority','Status','Created']} />
+        <TH cols={['Ticket #','Subject','Client','Raised By','Priority','Status','Created']} />
         <tbody className="divide-y divide-slate-50">
           {!list.length ? <NoData msg="No support tickets found. Create tickets from the Support module." /> : list.map((t, i) => (
             <tr key={t._id || i} className="hover:bg-slate-50/60 transition-colors">
               <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{t.ticketNumber || '—'}</td>
               <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{t.subject}</td>
+              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{t.clientName || t.client?.name || '—'}</td>
               <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{t.raisedByName || '—'}</td>
               <td className="px-4 py-3"><Badge val={t.priority} /></td>
               <td className="px-4 py-3"><Badge val={t.status} /></td>

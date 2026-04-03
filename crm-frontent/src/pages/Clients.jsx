@@ -137,7 +137,7 @@ const Clients = () => {
       render: (v, row) => (
         <div className="flex items-center gap-2.5">
           {row.photo?.filename ? (
-            <img src={`${import.meta.env.VITE_API_URL || 'https://parnetscrm.onrender.com'}/api/clients/docs/${row.photo.filename}`}
+            <img src={`${ 'https://parnetscrm.onrender.com'}/api/clients/docs/${row.photo.filename}`}
               alt={v} className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">

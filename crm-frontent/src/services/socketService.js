@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://parnetscrm.onrender.com';
+const SOCKET_URL =  'https://parnetscrm.onrender.com';
 
 let socket = null;
 

@@ -155,13 +155,24 @@ const InvoiceBuilder = () => {
     setSelectedQuotation(q);
     
     if (q) {
+      console.log('🔍 Selected Quotation:', q.quotationNumber);
+      console.log('   Development Budget:', q.developmentBudget);
+      console.log('   Services:', q.services);
+      console.log('   Services Count:', (q.services || []).length);
+      
       const items = [];
       if (q.developmentBudget > 0) {
         items.push({ description: 'Development Budget', qty: 1, rate: q.developmentBudget });
+        console.log('   ✅ Added Development Budget:', q.developmentBudget);
       }
-      (q.services || []).forEach(s => {
+      (q.services || []).forEach((s, index) => {
         items.push({ description: s.serviceName, qty: 1, rate: Number(s.amount) || 0 });
+        console.log(`   ✅ Added Service ${index + 1}:`, s.serviceName, '- ₹', s.amount);
       });
+      
+      console.log('📦 Total Items to be added:', items.length);
+      console.log('📋 Items:', items);
+      
       setInvoiceItems(items);
       
       // Set default due date from quotation validUntil

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoiceService } from '../services/invoiceService';
+import { quotationService } from '../services/quotationService';
 import PageHeader from '../components/common/PageHeader';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
@@ -36,6 +37,42 @@ const InvoiceDetail = () => {
     cacheTime: 0, // Don't cache
   });
 
+  // Fetch quotation details to show original items
+  const { data: quotationData, isLoading: quotationLoading, error: quotationError } = useQuery({
+    queryKey: ['quotation-for-invoice', fromQuote],
+    queryFn: () => quotationService.getOne(fromQuote).then(r => {
+      const quotation = r.data?.data?.quotation;
+      console.log('� Fetching Quotation for Invoice...');
+      console.log('   fromQuote ID:', fromQuote);
+      console.log('   Response:', r.data);
+      
+      if (quotation) {
+        console.log('✅ Quotation Data Received:', quotation.quotationNumber);
+        console.log('   Development Budget:', quotation.developmentBudget);
+        console.log('   Services Array:', quotation.services);
+        console.log('   Services Count:', (quotation.services || []).length);
+        
+        if (quotation.services && quotation.services.length > 0) {
+          console.log('📦 Services Details:');
+          quotation.services.forEach((s, i) => {
+            console.log(`   ${i + 1}. ${s.serviceName} - ₹${s.amount}`);
+          });
+        } else {
+          console.warn('⚠️  No services found in quotation!');
+        }
+        
+        // Calculate total items
+        const totalItems = (quotation.developmentBudget > 0 ? 1 : 0) + (quotation.services || []).length;
+        console.log(`📊 Total Items to Display: ${totalItems}`);
+      } else {
+        console.error('❌ No quotation data received');
+      }
+      
+      return quotation;
+    }),
+    enabled: !!fromQuote,
+  });
+
   const sendMut = useMutation({
     mutationFn: () => invoiceService.send(id),
     onSuccess: () => { qc.invalidateQueries(['invoice', id]); toast.success('Invoice marked as sent'); },
@@ -50,7 +87,12 @@ const InvoiceDetail = () => {
 
   const whatsappMut = useMutation({
     mutationFn: () => invoiceService.sendWhatsApp(id),
-    onSuccess: (r) => { qc.invalidateQueries(['invoice', id]); toast.success(r.data?.message || 'Sent via WhatsApp'); },
+    onSuccess: (r) => { 
+      qc.invalidateQueries(['invoice', id]); 
+      const waUrl = r.data?.data?.waUrl;
+      if (waUrl) window.open(waUrl, '_blank', 'noopener,noreferrer');
+      toast.success('WhatsApp opened with pre-filled message');
+    },
     onError: (e) => toast.error(e.response?.data?.message || 'WhatsApp failed'),
   });
 
@@ -240,7 +282,8 @@ const InvoiceDetail = () => {
                   <div>Singapura Village, Varadharaja Nagar,</div>
                   <div>Vidyaranyapura, Bengaluru,</div>
                   <div>Karnataka 560097</div>
-                  <div className="mt-2 font-medium">Contact: 095909 26068</div>
+                  <div className="mt-2 font-medium">GST: 29AANCP7155K1ZN</div>
+                  <div className="font-medium">Contact: 095909 26068</div>
                   <div className="text-indigo-600">hello@parnetsgroup.com</div>
                 </div>
               </div>
@@ -380,6 +423,139 @@ const InvoiceDetail = () => {
             </table>
             {inv.notes && <p className="mt-4 text-xs text-slate-500 border-t border-slate-100 pt-3">{inv.notes}</p>}
           </div>
+
+          {/* Approved Quotation Details */}
+          {fromQuote && (
+            <div className="crm-card p-5 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-indigo-900 mb-1">Approved Quotation</h3>
+                  {quotationData && (
+                    <p className="text-xs text-indigo-600">
+                      {quotationData.quotationNumber} • {quotationData.clientName || quotationData.client?.name} • {quotationData.projectName || quotationData.project?.name}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => navigate(`/quotations/${fromQuote}`)}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-700 underline"
+                >
+                  View Full Quotation
+                </button>
+              </div>
+
+              {quotationLoading && (
+                <div className="bg-white rounded-xl p-4 text-center">
+                  <div className="animate-spin inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full"></div>
+                  <p className="text-sm text-slate-500 mt-2">Loading quotation details...</p>
+                </div>
+              )}
+
+              {quotationError && (
+                <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+                  <p className="text-sm text-red-700">Failed to load quotation details</p>
+                  <p className="text-xs text-red-600 mt-1">{quotationError.message}</p>
+                </div>
+              )}
+
+              {quotationData && (
+                <div className="bg-white rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                    Quotation Items & Services
+                  </p>
+
+                  {/* Development Budget */}
+                  {quotationData.developmentBudget > 0 && (
+                    <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                          1
+                        </span>
+                        <span className="text-sm font-medium text-slate-700">Development Budget</span>
+                      </div>
+                      <span className="text-sm font-bold text-indigo-700">
+                        {formatINR(quotationData.developmentBudget)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Services */}
+                  {quotationData.services && quotationData.services.length > 0 ? (
+                    quotationData.services.map((service, index) => (
+                      <div key={index} className="flex items-center justify-between py-2 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold">
+                            {(quotationData.developmentBudget > 0 ? 1 : 0) + index + 1}
+                          </span>
+                          <span className="text-sm font-medium text-slate-700">{service.serviceName}</span>
+                        </div>
+                        <span className="text-sm font-bold text-purple-700">
+                          {formatINR(service.amount || 0)}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    !quotationData.developmentBudget && (
+                      <div className="text-center py-4 text-slate-500 text-sm">
+                        No services found in this quotation
+                      </div>
+                    )
+                  )}
+
+                  {/* Debug Info - Remove after testing */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-xs font-semibold text-yellow-800 mb-1">Debug Info:</p>
+                      <p className="text-xs text-yellow-700">
+                        Development Budget: {quotationData.developmentBudget > 0 ? '✅' : '❌'} 
+                        {quotationData.developmentBudget > 0 && ` (₹${quotationData.developmentBudget})`}
+                      </p>
+                      <p className="text-xs text-yellow-700">
+                        Services Array: {quotationData.services ? `✅ (${quotationData.services.length} items)` : '❌ null/undefined'}
+                      </p>
+                      {quotationData.services && (
+                        <p className="text-xs text-yellow-700 mt-1">
+                          Services: {JSON.stringify(quotationData.services.map(s => s.serviceName))}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Totals */}
+                  <div className="pt-3 mt-3 border-t-2 border-indigo-200 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">Subtotal</span>
+                      <span className="font-semibold text-slate-800">{formatINR(quotationData.subtotal || 0)}</span>
+                    </div>
+                    {quotationData.cgst > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600">CGST</span>
+                        <span className="font-semibold text-slate-800">{formatINR(quotationData.cgst || 0)}</span>
+                      </div>
+                    )}
+                    {quotationData.sgst > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600">SGST</span>
+                        <span className="font-semibold text-slate-800">{formatINR(quotationData.sgst || 0)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-base font-bold pt-2 border-t border-indigo-200">
+                      <span className="text-indigo-900">Grand Total</span>
+                      <span className="text-indigo-700">{formatINR(quotationData.grandTotal || 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Terms */}
+                  {quotationData.paymentTerms && (
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <p className="text-xs font-semibold text-slate-600 mb-2">Payment Terms:</p>
+                      <p className="text-xs text-slate-500 whitespace-pre-line">{quotationData.paymentTerms}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Installment Plan */}
           {inv.hasInstallmentPlan && inv.installmentPlan && inv.installmentPlan.length > 0 && (
