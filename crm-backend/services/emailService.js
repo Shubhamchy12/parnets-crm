@@ -246,6 +246,122 @@ class EmailService {
 
     return await this.sendMail(mailOptions);
   }
+
+  /**
+   * Get invoice email template
+   */
+  getInvoiceEmailTemplate(invoice, clientName) {
+    const formatCurrency = (amount) => {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 2
+      }).format(amount || 0);
+    };
+
+    const formatDate = (date) => {
+      return new Date(date).toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice ${invoice.invoiceNumber}</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px;">
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                
+                <!-- Header -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #2563eb 0%, #f97316 100%); padding: 40px 30px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">Parnets Software India Pvt Ltd</h1>
+                    <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">Invoice Notification</p>
+                  </td>
+                </tr>
+                
+                <!-- Content -->
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    <h2 style="margin: 0 0 20px; color: #1e293b; font-size: 20px;">Dear ${clientName},</h2>
+                    <p style="margin: 0 0 20px; color: #475569; font-size: 16px; line-height: 1.6;">
+                      Thank you for your business. Please find attached your invoice for the services provided.
+                    </p>
+                    
+                    <!-- Invoice Details Box -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                      <tr>
+                        <td style="background-color: #f8fafc; padding: 20px; border-bottom: 1px solid #e2e8f0;">
+                          <h3 style="margin: 0; color: #1e293b; font-size: 18px;">Invoice Details</h3>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 20px;">
+                          <table width="100%" cellpadding="8" cellspacing="0">
+                            <tr>
+                              <td style="color: #64748b; font-size: 14px; width: 40%;">Invoice Number:</td>
+                              <td style="color: #1e293b; font-size: 14px; font-weight: bold;">${invoice.invoiceNumber}</td>
+                            </tr>
+                            <tr>
+                              <td style="color: #64748b; font-size: 14px;">Invoice Date:</td>
+                              <td style="color: #1e293b; font-size: 14px;">${formatDate(invoice.invoiceDate)}</td>
+                            </tr>
+                            <tr>
+                              <td style="color: #64748b; font-size: 14px;">Due Date:</td>
+                              <td style="color: #1e293b; font-size: 14px;">${formatDate(invoice.dueDate)}</td>
+                            </tr>
+                            <tr>
+                              <td style="color: #64748b; font-size: 14px; padding-top: 10px; border-top: 1px solid #e2e8f0;">Total Amount:</td>
+                              <td style="color: #2563eb; font-size: 18px; font-weight: bold; padding-top: 10px; border-top: 1px solid #e2e8f0;">${formatCurrency(invoice.totalAmount)}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <!-- Payment Instructions -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin: 20px 0;">
+                      <tr>
+                        <td style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 20px;">
+                          <p style="margin: 0 0 10px; color: #1e40af; font-size: 14px; font-weight: bold;">Payment Instructions:</p>
+                          <p style="margin: 0; color: #1e40af; font-size: 14px; line-height: 1.8;">
+                            Please review the attached invoice and process the payment by the due date. If you have any questions or concerns, feel free to contact us.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <p style="margin: 20px 0 0; color: #475569; font-size: 14px;">
+                      Thank you for choosing Parnets Software India Pvt Ltd.
+                    </p>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                    <p style="margin: 0 0 5px; color: #64748b; font-size: 13px;">This is an automated message from Parnets CRM System</p>
+                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">&copy; ${new Date().getFullYear()} Parnets Software India Pvt Ltd. All rights reserved.</p>
+                  </td>
+                </tr>
+                
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+  }
 }
 
 // Export singleton instance
