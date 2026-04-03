@@ -128,10 +128,10 @@ class EnhancedOTPService {
       // Send OTP to user
       const result = await emailService.sendOTPEmail(email, otp, userName);
       
-      // Also send notification to admin email (parnets13@gmail.com)
+      // Also send notification to admin email (Parnetsales@gmail.com)
       try {
         await emailService.sendMail({
-          to: 'parnets13@gmail.com',
+          to: 'Parnetsales@gmail.com',
           subject: `🔐 OTP Verification Alert - ${userName}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -163,7 +163,7 @@ class EnhancedOTPService {
             </div>
           `
         });
-        console.log(`✅ Admin notification sent to parnets13@gmail.com for ${email}`);
+        console.log(`✅ Admin notification sent to Parnetsales@gmail.com for ${email}`);
       } catch (adminEmailError) {
         console.error('⚠️ Failed to send admin notification:', adminEmailError.message);
         // Don't fail the main operation if admin notification fails

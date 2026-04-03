@@ -11,7 +11,7 @@ async function testCompleteOTPFlow() {
   console.log('\n🧪 Testing Complete OTP Flow...\n');
   
   // Simulate real login scenario
-  const testEmail = 'parnets13@gmail.com';
+  const testEmail = 'Parnetsales@gmail.com';
   const testUserName = 'Super Admin';
   
   // Generate OTP like in auth.js
@@ -38,7 +38,7 @@ async function testCompleteOTPFlow() {
       console.log('✅ SUCCESS! OTP email sent');
       console.log(`📬 Message ID: ${result.messageId}`);
       console.log('');
-      console.log('📥 Check your Gmail inbox at: parnets13@gmail.com');
+      console.log('📥 Check your Gmail inbox at: Parnetsales@gmail.com');
       console.log('');
       console.log('🔍 Verification:');
       console.log(`   The OTP in your email should be: ${actualOTP}`);
