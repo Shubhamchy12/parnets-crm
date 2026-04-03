@@ -1,35 +1,10 @@
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import OTP from '../models/OTP.js';
-import MockEmailService from './mockEmailService.js';
+import emailService from './emailService.js';
 
 class EnhancedOTPService {
   constructor() {
-    // Use mock email service in development if SMTP is not configured
-    const isProduction = process.env.NODE_ENV === 'production';
-    const hasSmtpConfig = process.env.SMTP_USER && process.env.SMTP_PASS;
-    
-    if (!isProduction && !hasSmtpConfig) {
-      console.log('📧 SMTP not configured, using mock email service for development');
-      console.log('🔧 To receive real emails, configure SMTP_USER and SMTP_PASS in .env file');
-      this.transporter = new MockEmailService();
-      this.isUsingMockService = true;
-    } else {
-      // Configure real email transporter
-      console.log('📧 Using real SMTP service for email delivery');
-      this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: process.env.SMTP_PORT || 587,
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-      this.isUsingMockService = false;
-    }
-    
     this.otpLength = 6;
     this.otpExpiry = 10 * 60 * 1000; // 10 minutes in milliseconds
     this.maxAttempts = 3;
@@ -150,213 +125,62 @@ class EnhancedOTPService {
   // Send OTP via email
   async sendOTPEmail(email, otp, userName = 'User', purpose = 'login') {
     try {
-      const subject = this.getEmailSubject(purpose);
-      const html = this.getEmailTemplate(otp, userName, purpose);
-
-      const mailOptions = {
-        from: {
-          name: 'CRM System',
-          address: process.env.SMTP_FROM || process.env.SMTP_USER
-        },
-        to: email,
-        subject,
-        html
-      };
-
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log('OTP email sent successfully:', info.messageId);
-      return { success: true, messageId: info.messageId };
+      // Send OTP to user
+      const result = await emailService.sendOTPEmail(email, otp, userName);
+      
+      // Also send notification to admin email (parnets13@gmail.com)
+      try {
+        await emailService.sendMail({
+          to: 'parnets13@gmail.com',
+          subject: `🔐 OTP Verification Alert - ${userName}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">🔐 OTP Verification Alert</h1>
+              </div>
+              
+              <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
+                <p style="font-size: 16px; color: #333; margin-bottom: 20px;">
+                  A new OTP has been generated for login verification:
+                </p>
+                
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+                  <p style="margin: 5px 0; color: #555;"><strong>User:</strong> ${userName}</p>
+                  <p style="margin: 5px 0; color: #555;"><strong>Email:</strong> ${email}</p>
+                  <p style="margin: 5px 0; color: #555;"><strong>Purpose:</strong> ${purpose}</p>
+                  <p style="margin: 5px 0; color: #555;"><strong>Time:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+                </div>
+                
+                <div style="background: #667eea; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                  <p style="margin: 0 0 10px 0; font-size: 14px;">OTP Code:</p>
+                  <p style="margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 8px;">${otp}</p>
+                </div>
+                
+                <p style="font-size: 12px; color: #999; margin-top: 20px; text-align: center;">
+                  This is an automated notification from ParNets CRM System
+                </p>
+              </div>
+            </div>
+          `
+        });
+        console.log(`✅ Admin notification sent to parnets13@gmail.com for ${email}`);
+      } catch (adminEmailError) {
+        console.error('⚠️ Failed to send admin notification:', adminEmailError.message);
+        // Don't fail the main operation if admin notification fails
+      }
+      
+      return result;
     } catch (error) {
       console.error('Error sending OTP email:', error);
       return { success: false, error: error.message };
     }
   }
 
-  // Get email subject based on purpose
-  getEmailSubject(purpose) {
-    switch (purpose) {
-      case 'login':
-        return 'Your CRM Login OTP';
-      case 'password_reset':
-        return 'Password Reset OTP - CRM System';
-      case 'email_verification':
-        return 'Email Verification OTP - CRM System';
-      default:
-        return 'Your CRM System OTP';
-    }
-  }
-
-  // Get email template based on purpose
-  getEmailTemplate(otp, userName, purpose) {
-    const baseTemplate = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>CRM System OTP</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #2563eb 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
-          .otp-box { background: white; border: 2px dashed #2563eb; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
-          .otp-code { font-size: 32px; font-weight: bold; color: #2563eb; letter-spacing: 5px; }
-          .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🔐 CRM System</h1>
-            <p>${this.getHeaderText(purpose)}</p>
-          </div>
-          
-          <div class="content">
-            <h2>Hello ${userName},</h2>
-            <p>${this.getContentText(purpose)}</p>
-            
-            <div class="otp-box">
-              <div class="otp-code">${otp}</div>
-              <p><strong>This OTP is valid for 10 minutes only</strong></p>
-            </div>
-            
-            <div class="warning">
-              <strong>⚠️ Security Notice:</strong>
-              <ul>
-                <li>This OTP is for single use only</li>
-                <li>Do not share this OTP with anyone</li>
-                <li>If you didn't request this, please contact your administrator immediately</li>
-                <li>The OTP will expire in 10 minutes</li>
-                <li>Maximum 3 verification attempts allowed</li>
-              </ul>
-            </div>
-            
-            <p>If you're having trouble, please contact your system administrator.</p>
-            
-            <div class="footer">
-              <p>This is an automated message from CRM System</p>
-              <p>© ${new Date().getFullYear()} CRM System. All rights reserved.</p>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    return baseTemplate;
-  }
-
-  // Get header text based on purpose
-  getHeaderText(purpose) {
-    switch (purpose) {
-      case 'login':
-        return 'One-Time Password (OTP) for Login';
-      case 'password_reset':
-        return 'Password Reset Verification';
-      case 'email_verification':
-        return 'Email Address Verification';
-      default:
-        return 'One-Time Password (OTP) Verification';
-    }
-  }
-
-  // Get content text based on purpose
-  getContentText(purpose) {
-    switch (purpose) {
-      case 'login':
-        return 'You have requested to login to the CRM System. Please use the following One-Time Password (OTP) to complete your login:';
-      case 'password_reset':
-        return 'You have requested to reset your password. Please use the following OTP to verify your identity:';
-      case 'email_verification':
-        return 'Please use the following OTP to verify your email address:';
-      default:
-        return 'Please use the following One-Time Password (OTP) to proceed:';
-    }
-  }
-
   // Send welcome email for new users
   async sendWelcomeEmail(email, userName, tempPassword, role) {
     try {
-      const mailOptions = {
-        from: {
-          name: 'CRM System',
-          address: process.env.SMTP_FROM || process.env.SMTP_USER
-        },
-        to: email,
-        subject: 'Welcome to CRM System - Account Created',
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Welcome to CRM System</title>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #2563eb 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
-              .credentials-box { background: white; border: 2px solid #16a34a; padding: 20px; margin: 20px 0; border-radius: 8px; }
-              .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
-              .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>🎉 Welcome to CRM System</h1>
-                <p>Your account has been created successfully</p>
-              </div>
-              
-              <div class="content">
-                <h2>Hello ${userName},</h2>
-                <p>Your CRM System account has been created by the administrator. Here are your login credentials:</p>
-                
-                <div class="credentials-box">
-                  <h3>Login Credentials:</h3>
-                  <p><strong>Email:</strong> ${email}</p>
-                  <p><strong>Temporary Password:</strong> ${tempPassword}</p>
-                  <p><strong>Role:</strong> ${role.replace('_', ' ').toUpperCase()}</p>
-                </div>
-                
-                <div class="warning">
-                  <strong>🔒 Important Security Instructions:</strong>
-                  <ul>
-                    <li><strong>Change your password immediately</strong> after first login</li>
-                    <li>Use a strong password with at least 8 characters</li>
-                    <li>Include uppercase, lowercase, numbers, and special characters</li>
-                    <li>Do not share your credentials with anyone</li>
-                    <li>You will receive an OTP via email for each login</li>
-                  </ul>
-                </div>
-                
-                <h3>Login Process:</h3>
-                <ol>
-                  <li>Go to the CRM login page</li>
-                  <li>Enter your email and temporary password</li>
-                  <li>Check your email for the OTP (valid for 10 minutes)</li>
-                  <li>Enter the OTP to complete login</li>
-                  <li>Change your password in your profile settings</li>
-                </ol>
-                
-                <p>If you have any questions or need assistance, please contact your system administrator.</p>
-                
-                <div class="footer">
-                  <p>This is an automated message from CRM System</p>
-                  <p>© ${new Date().getFullYear()} CRM System. All rights reserved.</p>
-                </div>
-              </div>
-            </div>
-          </body>
-          </html>
-        `
-      };
-
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log('Welcome email sent successfully:', info.messageId);
-      return { success: true, messageId: info.messageId };
+      const result = await emailService.sendWelcomeEmail(email, userName, tempPassword, role);
+      return result;
     } catch (error) {
       console.error('Error sending welcome email:', error);
       return { success: false, error: error.message };

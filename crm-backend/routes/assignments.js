@@ -29,7 +29,14 @@ router.get('/', authenticate, async (req, res) => {
 
     const total = await ProjectAssignment.countDocuments(query);
     const assignments = await ProjectAssignment.find(query)
-      .populate({ path: 'project', select: 'name status startDate endDate client priority', populate: { path: 'client', select: 'name company' } })
+      .populate({ 
+        path: 'project', 
+        select: 'name status startDate endDate client priority credentials', 
+        populate: [
+          { path: 'client', select: 'name company' },
+          { path: 'credentials.addedBy', select: 'name' }
+        ]
+      })
       .populate({ path: 'employee', select: 'name email department designation' })
       .populate({ path: 'assignedBy', select: 'name' })
       .sort({ createdAt: -1 })
@@ -56,9 +63,10 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/assignments — assign employee to project
 router.post('/', authenticate, authorize(...ADMIN), async (req, res) => {
   try {
-    const { projectId, employeeId, note, assignedDate, workPlan } = req.body;
+    const { projectId, employeeId, note, assignedDate, workPlan, credentials } = req.body;
     console.log('Assignment request body:', JSON.stringify(req.body, null, 2));
     console.log('WorkPlan received:', workPlan);
+    console.log('Credentials received:', credentials);
     
     if (!projectId || !employeeId) return res.status(400).json({ success: false, message: 'projectId and employeeId required' });
 
@@ -76,6 +84,27 @@ router.post('/', authenticate, authorize(...ADMIN), async (req, res) => {
         success: false,
         message: 'Payment has not been received yet. Please ensure the invoice payment is approved before assigning the project.',
       });
+    }
+
+    // If credentials are provided, add them to the project
+    if (credentials && Array.isArray(credentials) && credentials.length > 0) {
+      const validCredentials = credentials.filter(c => c.title && (c.link || c.userId || c.password));
+      if (validCredentials.length > 0) {
+        const credentialsToAdd = validCredentials.map(c => ({
+          title: c.title,
+          link: c.link || '',
+          userId: c.userId || '',
+          password: c.password || '',
+          addedBy: req.user._id,
+          addedAt: new Date()
+        }));
+        
+        // Add credentials to project (append to existing)
+        await Project.findByIdAndUpdate(projectId, {
+          $push: { credentials: { $each: credentialsToAdd } }
+        });
+        console.log('Added credentials to project:', credentialsToAdd);
+      }
     }
 
     const assignment = await ProjectAssignment.create({
@@ -263,7 +292,14 @@ router.get('/project/:projectId', authenticate, async (req, res) => {
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const assignment = await ProjectAssignment.findById(req.params.id)
-      .populate({ path: 'project', select: 'name status endDate startDate client priority', populate: { path: 'client', select: 'name company' } })
+      .populate({ 
+        path: 'project', 
+        select: 'name status endDate startDate client priority credentials', 
+        populate: [
+          { path: 'client', select: 'name company' },
+          { path: 'credentials.addedBy', select: 'name' }
+        ]
+      })
       .populate({ path: 'employee', select: 'name email department designation' })
       .populate({ path: 'assignedBy', select: 'name' });
     if (!assignment) return res.status(404).json({ success: false, message: 'Not found' });

@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import jwtService from '../services/jwtService.js';
+import enhancedOtpService from '../services/enhancedOtpService.js';
 
 const router = express.Router();
 const otpStore = {};
@@ -33,7 +34,16 @@ router.post('/login', async (req, res) => {
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
     console.log(`\n🔐 OTP for ${email}: ${otp}\n`);
 
-    res.json({ success: true, message: 'OTP generated', data: { email: user.email, otpSent: true, otp, expiresIn: 10 } });
+    // Send OTP email to user and admin notification
+    try {
+      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'login');
+      console.log(`✅ OTP email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error('⚠️ Failed to send OTP email:', emailError.message);
+      // Continue even if email fails (OTP still shown in console for dev)
+    }
+
+    res.json({ success: true, message: 'OTP sent to your email', data: { email: user.email, otpSent: true, otp, expiresIn: 10 } });
   } catch (e) {
     console.error('Login error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -63,7 +73,7 @@ router.post('/verify-otp', async (req, res) => {
     });
 
     res.json({
-      success: true, message: 'Login successful',
+      success: true, message: 'OTP verified successfully',
       data: {
         user: { _id: user._id, name: user.name, email: user.email, role: user.role, status: user.status, department: user.department, designation: user.designation },
         accessToken, refreshToken
@@ -86,7 +96,15 @@ router.post('/resend-otp', async (req, res) => {
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
     console.log(`\n🔐 New OTP for ${email}: ${otp}\n`);
 
-    res.json({ success: true, data: { email: user.email, otp, expiresIn: 10 } });
+    // Send OTP email to user and admin notification
+    try {
+      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'login');
+      console.log(`✅ Resend OTP email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error('⚠️ Failed to send OTP email:', emailError.message);
+    }
+
+    res.json({ success: true, message: 'OTP sent to your email', data: { email: user.email, otp, expiresIn: 10 } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -182,7 +200,16 @@ router.post('/forgot-password', async (req, res) => {
     const otp = generateOTP();
     otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, type: 'reset', userId: user._id.toString() };
     console.log(`\n🔑 Password reset OTP for ${email}: ${otp}\n`);
-    res.json({ success: true, message: 'Password reset OTP sent', data: { otp } });
+    
+    // Send password reset OTP email
+    try {
+      await enhancedOtpService.sendOTPEmail(user.email, otp, user.name, 'password-reset');
+      console.log(`✅ Password reset OTP email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error('⚠️ Failed to send password reset OTP email:', emailError.message);
+    }
+    
+    res.json({ success: true, message: 'Password reset OTP sent to your email', data: { otp } });
   } catch {
     res.status(500).json({ success: false, message: 'Server error' });
   }

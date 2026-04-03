@@ -4,6 +4,10 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
 import path from 'path';
+
+// Load environment variables FIRST before any other imports
+dotenv.config();
+
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import employeeRoutes from './routes/employees.js';
@@ -33,8 +37,10 @@ import departmentRoutes from './routes/departments.js';
 import serviceRoutes from './routes/services.js';
 import quotationRoutes from './routes/quotations.js';
 import quoteRoutes from './routes/quotes.js';
+import emailService from './services/emailService.js';
 
-dotenv.config();
+// Initialize email service (singleton will auto-configure)
+console.log('📧 Initializing email service...');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -57,7 +63,7 @@ mongoose.connect(process.env.MONGODB_URI)
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  process.env.FRONTEND_URL_PROD || 'https://parnetscrm.onrender.com',
+  process.env.FRONTEND_URL_PROD || 'http://localhost:5002',
   'http://localhost:5173',
   'http://localhost:5174',
 ];
@@ -114,6 +120,54 @@ app.get('/api/health', (req, res) => {
     message: 'CRM Backend is running',
     db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
+});
+
+// Email service test endpoint
+app.get('/api/test-email', async (req, res) => {
+  try {
+    const testEmail = process.env.SMTP_USER;
+    
+    if (!testEmail) {
+      return res.status(500).json({
+        success: false,
+        message: 'SMTP_USER not configured'
+      });
+    }
+
+    const result = await emailService.sendMail({
+      to: testEmail,
+      subject: 'CRM Email Service Test',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #2563eb;">✅ Email Service Test</h2>
+          <p>This is a test email from your CRM system.</p>
+          <p>If you're reading this, your email service is working correctly!</p>
+          <hr style="border: 1px solid #e2e8f0; margin: 20px 0;">
+          <p style="color: #64748b; font-size: 14px;">
+            Sent at: ${new Date().toLocaleString('en-IN')}
+          </p>
+        </div>
+      `
+    });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Test email sent successfully to ${testEmail}`,
+        messageId: result.messageId
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.error || 'Failed to send email'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
 });
 
 // 404

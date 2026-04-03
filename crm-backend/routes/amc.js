@@ -23,28 +23,81 @@ router.get('/', authenticate, authorize('super_admin', 'admin'), async (req, res
 // POST /api/amc
 router.post('/', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
   try {
-    const { client, clientName, description, startDate, endDate, value, renewalDate, notes } = req.body;
-    if (!client && !clientName) return res.status(400).json({ success: false, message: 'Client is required' });
+    const { 
+      contractNumber, 
+      clientName, 
+      projectName, 
+      projectId,
+      serviceType,
+      startDate, 
+      endDate, 
+      renewalDate,
+      amount,
+      paymentFrequency,
+      status,
+      description,
+      services,
+      contactPerson,
+      contactEmail,
+      contactPhone
+    } = req.body;
+    
+    if (!contractNumber) return res.status(400).json({ success: false, message: 'Contract number is required' });
+    if (!clientName) return res.status(400).json({ success: false, message: 'Client name is required' });
+    if (!startDate) return res.status(400).json({ success: false, message: 'Start date is required' });
+    if (!endDate) return res.status(400).json({ success: false, message: 'End date is required' });
+    
     const amc = {
       _id: String(amcIdCounter++),
-      client, clientName, description, startDate, endDate, value: parseFloat(value) || 0,
-      renewalDate, notes, status: 'active',
+      contractNumber,
+      clientName,
+      projectName: projectName || '',
+      projectId: projectId || null,
+      serviceType: serviceType || 'website_maintenance',
+      startDate,
+      endDate,
+      renewalDate: renewalDate || endDate,
+      amount: parseFloat(amount) || 0,
+      paymentFrequency: paymentFrequency || 'monthly',
+      status: status || 'active',
+      description: description || '',
+      services: services || [],
+      contactPerson: contactPerson || '',
+      contactEmail: contactEmail || '',
+      contactPhone: contactPhone || '',
       createdBy: req.user._id.toString(),
       createdAt: new Date().toISOString(),
     };
+    
     amcContracts.push(amc);
     res.status(201).json({ success: true, message: 'AMC contract created', data: { contract: amc } });
   } catch (e) {
+    console.error('AMC creation error:', e);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
 // PUT /api/amc/:id
 router.put('/:id', authenticate, authorize('super_admin', 'admin'), async (req, res) => {
-  const idx = amcContracts.findIndex(a => a._id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: 'AMC contract not found' });
-  amcContracts[idx] = { ...amcContracts[idx], ...req.body, _id: amcContracts[idx]._id };
-  res.json({ success: true, data: { contract: amcContracts[idx] } });
+  try {
+    const idx = amcContracts.findIndex(a => a._id === req.params.id);
+    if (idx === -1) return res.status(404).json({ success: false, message: 'AMC contract not found' });
+    
+    // Preserve _id and createdAt, update everything else
+    const updatedContract = {
+      ...amcContracts[idx],
+      ...req.body,
+      _id: amcContracts[idx]._id,
+      createdAt: amcContracts[idx].createdAt,
+      updatedAt: new Date().toISOString()
+    };
+    
+    amcContracts[idx] = updatedContract;
+    res.json({ success: true, message: 'AMC contract updated', data: { contract: updatedContract } });
+  } catch (e) {
+    console.error('AMC update error:', e);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // DELETE /api/amc/:id

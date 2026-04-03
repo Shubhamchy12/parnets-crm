@@ -16,6 +16,8 @@ const ticketSchema = new mongoose.Schema({
   priority:     { type: String, enum: ['low','medium','high','urgent'], default: 'medium' },
   category:     { type: String, trim: true },
   status:       { type: String, enum: ['open','in_progress','resolved','closed'], default: 'open' },
+  client:       { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
+  clientName:   { type: String },
   replies:      [replySchema],
   raisedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   raisedByName: { type: String },

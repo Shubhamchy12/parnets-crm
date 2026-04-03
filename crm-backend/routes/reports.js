@@ -176,7 +176,11 @@ router.get('/projects', authenticate, async (req, res) => {
 // ── SUPPORT ───────────────────────────────────────────────────────────────────
 router.get('/support', authenticate, async (req, res) => {
   try {
-    const list = await Ticket.find({}).sort({ createdAt: -1 }).lean();
+    const list = await Ticket.find({})
+      .populate('client', 'name company email')
+      .sort({ createdAt: -1 })
+      .lean();
+    
     const open       = list.filter(t => t.status === 'open').length;
     const inProgress = list.filter(t => t.status === 'in_progress').length;
     const resolved   = list.filter(t => t.status === 'resolved').length;

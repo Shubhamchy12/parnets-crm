@@ -30,6 +30,22 @@ router.get('/', authenticate, authorize(...ADMIN), async (req, res) => {
   }
 });
 
+// GET /api/procurement/:id
+router.get('/:id', authenticate, authorize(...ADMIN), async (req, res) => {
+  try {
+    const procurement = await Procurement.findById(req.params.id)
+      .populate({ path: 'client', select: 'name company', options: { strictPopulate: false } })
+      .populate({ path: 'project', select: 'name', options: { strictPopulate: false } })
+      .populate({ path: 'requestedBy', select: 'name', options: { strictPopulate: false } })
+      .lean();
+    if (!procurement) return res.status(404).json({ success: false, message: 'Procurement not found' });
+    res.json({ success: true, data: { procurement } });
+  } catch (e) {
+    console.error('Get procurement by ID error:', e);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // POST /api/procurement
 router.post('/', authenticate, authorize(...ADMIN), async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 ﻿import express from 'express';
 import PDFDocument from 'pdfkit';
-import nodemailer from 'nodemailer';
+import emailService from '../services/emailService.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,6 +12,216 @@ import { logActivity } from '../middleware/activity.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 const ADMIN_SALES = ['super_admin', 'admin', 'sub_admin', 'sales'];
+
+// Generate Quotation PDF Buffer
+async function generateQuotationPDF(quotation) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, autoFirstPage: false });
+      const chunks = [];
+      
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.addPage({ size: 'A4', margin: 0 });
+
+      const pageW = doc.page.width;   // 595
+      const pageH = doc.page.height;  // 842
+      const L = 40, R = pageW - 40;
+      const contentW = R - L;         // 515
+
+      // ── HEADER BAND ───────────────────────────────────────────────────────────
+      doc.rect(0, 0, pageW, 140).fill('#ffffff');
+
+      // Logo
+      const logoPath = path.join(__dirname, '../../crm-frontent/public/logo.jpg');
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, L, 20, { fit: [120, 60] });
+      }
+
+      // Company name below logo - centered
+      doc.fillColor('#1e3a8a').fontSize(18).font('Helvetica-Bold')
+        .text('ParNets Software India Pvt Ltd', L, 88, { width: contentW, align: 'center', lineBreak: false });
+
+      // Address details - centered
+      doc.fillColor('#64748b').fontSize(9).font('Helvetica')
+        .text('So104/1/50, Singapura Main Rd,', L, 110, { width: contentW, align: 'center', lineBreak: false })
+        .text('Singapura Village, Varadharaja Nagar,', L, 122, { width: contentW, align: 'center', lineBreak: false })
+        .text('Vidyaranyapura, Bengaluru, Karnataka 560097', L, 134, { width: contentW, align: 'center', lineBreak: false });
+
+      // GST and Contact details - centered
+      doc.fillColor('#1e3a8a').fontSize(9).font('Helvetica-Bold')
+        .text('GST: 29AANCP7155K1ZN', L, 150, { width: contentW, align: 'center', lineBreak: false });
+      doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold')
+        .text('Contact: 095909 26068', L, 162, { width: contentW / 2 - 10, align: 'right', lineBreak: false });
+      doc.fillColor('#4f46e5').fontSize(9).font('Helvetica')
+        .text('hello@parnetsgroup.com', L + contentW / 2 + 10, 162, { width: contentW / 2 - 10, align: 'left', lineBreak: false });
+
+      // QUOTATION title - right side
+      doc.fillColor('#f97316').fontSize(24).font('Helvetica-Bold')
+        .text('QUOTATION', 320, 30, { width: 235, align: 'right', lineBreak: false });
+      doc.fillColor('#64748b').fontSize(10).font('Helvetica')
+        .text(quotation.quotationNumber, 320, 60, { width: 235, align: 'right', lineBreak: false });
+
+      let y = 175;
+
+      // ── META INFO ROW ─────────────────────────────────────────────────────────
+      doc.rect(L, y, contentW, 22).fill('#f1f5f9').stroke('#e2e8f0');
+      doc.fillColor('#475569').fontSize(9).font('Helvetica')
+        .text(`Date: ${new Date(quotation.createdAt).toLocaleDateString('en-IN')}`, L + 10, y + 7, { lineBreak: false })
+        .text(`Status: ${(quotation.status || 'pending').toUpperCase()}`, L + 160, y + 7, { lineBreak: false });
+      if (quotation.validUntil) {
+        doc.text(`Valid Until: ${new Date(quotation.validUntil).toLocaleDateString('en-IN')}`, L + 310, y + 7, { lineBreak: false });
+      }
+      y += 30;
+
+      // ── FROM / TO BOXES ───────────────────────────────────────────────────────
+      const boxW = (contentW - 12) / 2;
+      const boxH = 80;
+
+      // FROM
+      doc.rect(L, y, boxW, boxH).fill('#f8fafc').stroke('#e2e8f0');
+      doc.rect(L, y, boxW, 20).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+        .text('FROM', L + 10, y + 6, { lineBreak: false });
+      doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold')
+        .text('ParNets Software India Pvt Ltd', L + 10, y + 26, { width: boxW - 20, lineBreak: false });
+      doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
+        .text('So104/1/50, Singapura Main Rd, Vidyaranyapura', L + 10, y + 41, { width: boxW - 20, lineBreak: false })
+        .text('Bengaluru, Karnataka 560097', L + 10, y + 53, { width: boxW - 20, lineBreak: false })
+        .text('GST: 29AANCP7155K1ZN', L + 10, y + 65, { width: boxW - 20, lineBreak: false })
+        .text('hello@parnetsgroup.com  |  095909 26068', L + 10, y + 77, { width: boxW - 20, lineBreak: false });
+
+      // TO
+      const toX = L + boxW + 12;
+      doc.rect(toX, y, boxW, boxH).fill('#f8fafc').stroke('#e2e8f0');
+      doc.rect(toX, y, boxW, 20).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+        .text('BILL TO', toX + 10, y + 6, { lineBreak: false });
+      doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold')
+        .text(quotation.client?.name || '—', toX + 10, y + 26, { width: boxW - 20, lineBreak: false });
+      doc.fillColor('#475569').fontSize(9).font('Helvetica');
+      let cy = y + 41;
+      if (quotation.client?.company) { doc.text(quotation.client.company, toX + 10, cy, { width: boxW - 20, lineBreak: false }); cy += 14; }
+      if (quotation.client?.email)   { doc.text(quotation.client.email,   toX + 10, cy, { width: boxW - 20, lineBreak: false }); cy += 14; }
+      if (quotation.client?.phone)   { doc.text(quotation.client.phone,   toX + 10, cy, { width: boxW - 20, lineBreak: false }); }
+      y += boxH + 14;
+
+      // ── PROJECT ROW ───────────────────────────────────────────────────────────
+      doc.rect(L, y, contentW, 24).fill('#eff6ff').stroke('#bfdbfe');
+      doc.fillColor('#1e40af').fontSize(10).font('Helvetica-Bold')
+        .text('PROJECT:', L + 10, y + 7, { lineBreak: false });
+      doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
+        .text(quotation.project?.name || '—', L + 80, y + 7, { width: contentW - 90, lineBreak: false });
+      y += 32;
+
+      // ── BUDGET TABLE ──────────────────────────────────────────────────────────
+      const rH = 22;
+
+      // Table header
+      doc.rect(L, y, contentW, rH).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
+        .text('DESCRIPTION', L + 10, y + 6, { lineBreak: false })
+        .text('AMOUNT (INR)', R - 10, y + 6, { align: 'right', width: 110, lineBreak: false });
+      y += rH;
+
+      const trow = (label, amount, shade = false) => {
+        if (shade) doc.rect(L, y, contentW, rH).fill('#f8fafc');
+        doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
+          .text(label, L + 10, y + 6, { width: contentW - 140, lineBreak: false });
+        doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
+          .text(`Rs. ${Number(amount).toLocaleString('en-IN')}`, R - 120, y + 6, { align: 'right', width: 110, lineBreak: false });
+        doc.moveTo(L, y + rH).lineTo(R, y + rH).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+        y += rH;
+      };
+
+      trow('Development Budget', quotation.developmentBudget, false);
+      if (quotation.services?.length) {
+        quotation.services.forEach((s, i) => trow(s.serviceName, s.amount, i % 2 === 0));
+      }
+
+      // Totals separator
+      doc.moveTo(L, y + 2).lineTo(R, y + 2).strokeColor('#94a3b8').lineWidth(1).stroke();
+      y += 8;
+
+      const srow = (label, amount, bold = false, bg = null) => {
+        if (bg) doc.rect(L, y, contentW, rH).fill(bg);
+        doc.fillColor(bg === '#1e3a8a' ? '#ffffff' : '#475569')
+          .fontSize(bold ? 11 : 10).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+          .text(label, L + 10, y + 6, { lineBreak: false });
+        doc.fillColor(bg === '#1e3a8a' ? '#ffffff' : '#475569')
+          .fontSize(bold ? 11 : 10).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+          .text(`Rs. ${Number(amount).toLocaleString('en-IN')}`, R - 120, y + 6, { align: 'right', width: 110, lineBreak: false });
+        y += rH;
+      };
+
+      srow('Subtotal', quotation.subtotal ?? 0);
+      srow('CGST (9%)', quotation.cgst ?? 0, false, '#f8fafc');
+      srow('SGST (9%)', quotation.sgst ?? 0);
+      y += 4;
+      doc.rect(L, y, contentW, 28).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(12).font('Helvetica-Bold')
+        .text('GRAND TOTAL (Incl. GST)', L + 10, y + 8, { lineBreak: false });
+      doc.fillColor('#ffffff').fontSize(12).font('Helvetica-Bold')
+        .text(`Rs. ${Number(quotation.grandTotal).toLocaleString('en-IN')}`, R - 120, y + 8, { align: 'right', width: 110, lineBreak: false });
+      y += 36;
+
+      // ── NOTES ─────────────────────────────────────────────────────────────────
+      if (quotation.notes) {
+        doc.rect(L, y, contentW, 20).fill('#fef9c3');
+        doc.fillColor('#854d0e').fontSize(10).font('Helvetica-Bold')
+          .text('NOTES', L + 10, y + 5, { lineBreak: false });
+        y += 20;
+        const noteLines = quotation.notes.split('\n').filter(Boolean);
+        noteLines.forEach(line => {
+          doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
+            .text(line, L + 10, y + 4, { width: contentW - 20, lineBreak: false });
+          y += 16;
+        });
+        y += 6;
+      }
+
+      // ── PAYMENT TERMS ─────────────────────────────────────────────────────────
+      if (quotation.paymentTerms) {
+        doc.rect(L, y, contentW, 20).fill('#eff6ff');
+        doc.fillColor('#1e40af').fontSize(10).font('Helvetica-Bold')
+          .text('PAYMENT TERMS', L + 10, y + 5, { lineBreak: false });
+        y += 20;
+        quotation.paymentTerms.split('\n').filter(Boolean).forEach((line, i) => {
+          doc.rect(L, y, 16, 16).fill('#2563eb');
+          doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
+            .text(`${i + 1}`, L + 5, y + 4, { lineBreak: false });
+          doc.fillColor('#1e293b').fontSize(10).font('Helvetica')
+            .text(line, L + 22, y + 3, { width: contentW - 30, lineBreak: false });
+          y += 20;
+        });
+        y += 6;
+      }
+
+      // ── SIGNATURE AREA ────────────────────────────────────────────────────────
+      y += 10;
+      doc.moveTo(L, y).lineTo(L + 160, y).strokeColor('#94a3b8').lineWidth(0.8).stroke();
+      doc.moveTo(R - 160, y).lineTo(R, y).strokeColor('#94a3b8').lineWidth(0.8).stroke();
+      doc.fillColor('#94a3b8').fontSize(9).font('Helvetica')
+        .text('Authorized Signature', L, y + 4, { width: 160, align: 'center', lineBreak: false })
+        .text('Client Signature', R - 160, y + 4, { width: 160, align: 'center', lineBreak: false });
+
+      // ── FOOTER ────────────────────────────────────────────────────────────────
+      const fY = pageH - 30;
+      doc.rect(0, fY, pageW, 30).fill('#1e3a8a');
+      doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+        .text('ParNets Software India Pvt Ltd', L, fY + 6, { lineBreak: false });
+      doc.fillColor('#bfdbfe').fontSize(8).font('Helvetica')
+        .text('This is a computer-generated quotation and does not require a physical signature.',
+          L, fY + 18, { align: 'center', width: contentW, lineBreak: false });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 
 function calcTotals(services = [], developmentBudget = 0) {
   const servicesTotal = services.reduce((s, sv) => s + (Number(sv.amount) || 0), 0);
@@ -180,37 +390,45 @@ router.patch('/:id/status', authenticate, authorize('super_admin', 'admin'), asy
   }
 });
 
-// POST /api/quotations/:id/send-email
+// POST /api/quotations/:id/send-email - Send quotation with PDF attachment
 router.post('/:id/send-email', authenticate, authorize(...ADMIN_SALES), async (req, res) => {
   try {
-    const { SMTP_USER, SMTP_PASS } = process.env;
-    if (!SMTP_USER || SMTP_USER.includes('your-real-gmail') || !SMTP_PASS || SMTP_PASS.includes('xxxx')) {
-      return res.status(503).json({ success: false, message: 'Email not configured.' });
-    }
+    console.log(`📧 Sending quotation email for ID: ${req.params.id}`);
+    
     const quotation = await populatedQuotation(req.params.id);
     if (!quotation) return res.status(404).json({ success: false, message: 'Quotation not found' });
+
     const clientEmail = quotation.client?.email;
-    if (!clientEmail) return res.status(400).json({ success: false, message: 'Client has no email address' });
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-    });
+    const clientName = quotation.client?.name || 'Client';
+    
+    if (!clientEmail) {
+      return res.status(400).json({ success: false, message: 'Client has no email address' });
+    }
+
+    console.log(`📧 Sending to: ${clientEmail} (${clientName})`);
+
+    // Generate PDF buffer
+    console.log('📄 Generating PDF...');
+    const pdfBuffer = await generateQuotationPDF(quotation);
+    console.log(`✅ PDF generated: ${pdfBuffer.length} bytes`);
+
+    // Prepare email HTML
     const servicesHtml = quotation.services?.length
       ? quotation.services.map(s => `<tr><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9">${s.serviceName}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">Rs.${Number(s.amount).toLocaleString()}</td></tr>`).join('')
       : '';
-    await transporter.sendMail({
-      from: `"${process.env.SMTP_FROM_NAME || 'Parnets CRM'}" <${SMTP_USER}>`,
+
+    // Send email with PDF attachment
+    const emailResult = await emailService.sendMail({
       to: clientEmail,
-      subject: `Quotation ${quotation.quotationNumber} - ${quotation.project?.name}`,
+      subject: `Quotation ${quotation.quotationNumber} — Parnets Software India Pvt Ltd`,
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#1e3a8a;padding:24px;border-radius:8px 8px 0 0">
           <h2 style="color:#fff;margin:0">Quotation ${quotation.quotationNumber}</h2>
           <p style="color:rgba(255,255,255,0.8);margin:4px 0 0">Project: ${quotation.project?.name}</p>
         </div>
         <div style="background:#fff;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px">
-          <p>Dear ${quotation.client?.name},</p>
+          <p>Dear ${clientName},</p>
+          <p style="color:#64748b;font-size:14px">Please find attached the quotation for your project.</p>
           <table style="width:100%;border-collapse:collapse;margin:16px 0">
             <thead><tr style="background:#f8fafc"><th style="padding:8px 12px;text-align:left">Description</th><th style="padding:8px 12px;text-align:right">Amount</th></tr></thead>
             <tbody>
@@ -220,14 +438,36 @@ router.post('/:id/send-email', authenticate, authorize(...ADMIN_SALES), async (r
             <tfoot><tr style="background:#f8fafc;font-weight:bold"><td style="padding:8px 12px">Grand Total</td><td style="padding:8px 12px;text-align:right">Rs.${Number(quotation.grandTotal).toLocaleString()}</td></tr></tfoot>
           </table>
           ${quotation.notes ? `<p style="color:#64748b;font-size:14px"><strong>Notes:</strong> ${quotation.notes}</p>` : ''}
-          <p style="margin-top:24px">Regards,<br><strong>Parnets Networks Pvt. Ltd.</strong></p>
+          <p style="margin-top:24px">Regards,<br><strong>Parnets Software India Pvt Ltd</strong></p>
         </div>
       </div>`,
+      attachments: [{
+        filename: `Quotation-${quotation.quotationNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
     });
-    await Quotation.findByIdAndUpdate(req.params.id, { isSent: true, sentAt: new Date(), sentVia: 'email' });
+
+    // Check if email was sent successfully
+    if (!emailResult.success) {
+      return res.status(500).json({ 
+        success: false, 
+        message: emailResult.error || 'Failed to send email' 
+      });
+    }
+
+    // Update quotation status
+    await Quotation.findByIdAndUpdate(req.params.id, { 
+      isSent: true, 
+      sentAt: new Date(), 
+      sentVia: 'email' 
+    });
+
+    console.log(`✅ Quotation email sent successfully to ${clientEmail}`);
     res.json({ success: true, message: `Quotation sent to ${clientEmail}` });
+    
   } catch (e) {
-    console.error('Send email error:', e);
+    console.error('❌ Send quotation email error:', e);
     res.status(500).json({ success: false, message: e.message || 'Failed to send email' });
   }
 });
@@ -300,11 +540,13 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       .text('Singapura Village, Varadharaja Nagar,', L, 122, { width: contentW, align: 'center', lineBreak: false })
       .text('Vidyaranyapura, Bengaluru, Karnataka 560097', L, 134, { width: contentW, align: 'center', lineBreak: false });
 
-    // Contact details - centered
+    // GST and Contact details - centered
+    doc.fillColor('#1e3a8a').fontSize(9).font('Helvetica-Bold')
+      .text('GST: 29AANCP7155K1ZN', L, 150, { width: contentW, align: 'center', lineBreak: false });
     doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold')
-      .text('Contact: 095909 26068', L, 150, { width: contentW / 2 - 10, align: 'right', lineBreak: false });
+      .text('Contact: 095909 26068', L, 162, { width: contentW / 2 - 10, align: 'right', lineBreak: false });
     doc.fillColor('#4f46e5').fontSize(9).font('Helvetica')
-      .text('hello@parnetsgroup.com', L + contentW / 2 + 10, 150, { width: contentW / 2 - 10, align: 'left', lineBreak: false });
+      .text('hello@parnetsgroup.com', L + contentW / 2 + 10, 162, { width: contentW / 2 - 10, align: 'left', lineBreak: false });
 
     // QUOTATION title - right side
     doc.fillColor('#f97316').fontSize(24).font('Helvetica-Bold')
@@ -338,7 +580,8 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
     doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
       .text('So104/1/50, Singapura Main Rd, Vidyaranyapura', L + 10, y + 41, { width: boxW - 20, lineBreak: false })
       .text('Bengaluru, Karnataka 560097', L + 10, y + 53, { width: boxW - 20, lineBreak: false })
-      .text('hello@parnetsgroup.com  |  095909 26068', L + 10, y + 65, { width: boxW - 20, lineBreak: false });
+      .text('GST: 29AANCP7155K1ZN', L + 10, y + 65, { width: boxW - 20, lineBreak: false })
+      .text('hello@parnetsgroup.com  |  095909 26068', L + 10, y + 77, { width: boxW - 20, lineBreak: false });
 
     // TO
     const toX = L + boxW + 12;

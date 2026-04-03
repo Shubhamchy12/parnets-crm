@@ -18,6 +18,7 @@ router.get('/', authenticate, async (req, res) => {
 
     const total   = await Ticket.countDocuments(filter);
     const tickets = await Ticket.find(filter)
+      .populate('client', 'name company email')
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit)
@@ -32,12 +33,13 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/tickets
 router.post('/', authenticate, logActivity('Ticket created', 'ticket', 'medium'), async (req, res) => {
   try {
-    const { subject, description, priority = 'medium', category } = req.body;
+    const { subject, description, priority = 'medium', category, client, clientName } = req.body;
     if (!subject || !description)
       return res.status(400).json({ success: false, message: 'Subject and description are required' });
 
     const ticket = await Ticket.create({
       subject, description, priority, category,
+      client, clientName,
       raisedBy: req.user._id,
       raisedByName: req.user.name,
     });
@@ -50,7 +52,9 @@ router.post('/', authenticate, logActivity('Ticket created', 'ticket', 'medium')
 // GET /api/tickets/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const ticket = await Ticket.findById(req.params.id).lean();
+    const ticket = await Ticket.findById(req.params.id)
+      .populate('client', 'name company email phone')
+      .lean();
     if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
     res.json({ success: true, data: { ticket } });
   } catch (e) {

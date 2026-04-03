@@ -1,6 +1,6 @@
 import express from 'express';
 import PDFDocument from 'pdfkit';
-import nodemailer from 'nodemailer';
+import emailService from '../services/emailService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
 import Client from '../models/Client.js';
@@ -137,19 +137,11 @@ router.post('/:id/send-email', authenticate, authorize('super_admin', 'admin', '
     }
     if (!clientEmail) return res.status(400).json({ success: false, message: 'Client has no email address' });
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    });
-
     const itemsHtml = (quote.items || []).map(item =>
       `<tr><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9">${item.description || ''}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:center">${item.qty || item.quantity || 1}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">₹${Number(item.rate || 0).toLocaleString()}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">₹${((item.qty || item.quantity || 1) * (item.rate || 0)).toLocaleString()}</td></tr>`
     ).join('');
 
-    await transporter.sendMail({
-      from: `"${process.env.SMTP_FROM_NAME || 'Parnets CRM'}" <${process.env.SMTP_USER}>`,
+    const emailResult = await emailService.sendMail({
       to: clientEmail,
       subject: `Quote ${quote.quoteNumber}${quote.subject ? ' — ' + quote.subject : ''}`,
       html: `
@@ -181,6 +173,14 @@ router.post('/:id/send-email', authenticate, authorize('super_admin', 'admin', '
           </div>
         </div>`,
     });
+
+    // Check if email was sent successfully
+    if (!emailResult.success) {
+      return res.status(500).json({ 
+        success: false, 
+        message: emailResult.error || 'Failed to send email' 
+      });
+    }
 
     quote.status = 'sent';
     quote.sentAt = new Date().toISOString();

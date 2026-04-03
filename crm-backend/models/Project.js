@@ -126,6 +126,15 @@ const projectSchema = new mongoose.Schema({
     scopeOfWork:  { filename: String, path: String, originalName: String },
     otherDoc:     { filename: String, path: String, originalName: String },
   },
+  // Project Credentials (for hosting, APIs, etc.)
+  credentials: [{
+    title: { type: String, required: true, trim: true },
+    link: { type: String, trim: true },
+    userId: { type: String, trim: true },
+    password: { type: String, trim: true },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    addedAt: { type: Date, default: Date.now }
+  }],
   // Terms & Conditions
   termsAndConditions: {
     type: String,

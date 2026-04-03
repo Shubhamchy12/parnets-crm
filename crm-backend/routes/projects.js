@@ -101,7 +101,7 @@ router.get('/', authenticate, async (req, res) => {
     if (status) query.status = status;
     if (priority) query.priority = priority;
     const projects = await Project.find(query)
-      .populate({ path: 'client', select: 'name company', options: { strictPopulate: false } })
+      .populate({ path: 'client', options: { strictPopulate: false } })
       .populate({ path: 'projectManager', select: 'name email', options: { strictPopulate: false } })
       .populate({ path: 'teamMembers.user', select: 'name email', options: { strictPopulate: false } })
       .populate({ path: 'createdBy', select: 'name email', options: { strictPopulate: false } })
@@ -142,7 +142,8 @@ router.get('/:id', authenticate, async (req, res) => {
     const project = await Project.findById(req.params.id)
       .populate({ path: 'client', select: 'name company email phone', options: { strictPopulate: false } })
       .populate({ path: 'projectManager', select: 'name email', options: { strictPopulate: false } })
-      .populate({ path: 'teamMembers.user', select: 'name email role', options: { strictPopulate: false } });
+      .populate({ path: 'teamMembers.user', select: 'name email role', options: { strictPopulate: false } })
+      .populate({ path: 'credentials.addedBy', select: 'name', options: { strictPopulate: false } });
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
     res.json({ success: true, data: { project } });
   } catch (e) {

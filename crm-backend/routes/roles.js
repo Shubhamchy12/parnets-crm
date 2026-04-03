@@ -12,15 +12,36 @@ import User from '../models/User.js';
 
 const router = express.Router();
 
-// Get all roles with optional hierarchy filtering
+// Get all roles with optional hierarchy filtering and pagination
 router.get('/', authenticate, requireAdmin(), async (req, res) => {
   try {
-    const { maxHierarchy } = req.query;
-    const roles = await roleService.getAllRoles(maxHierarchy ? parseInt(maxHierarchy) : null);
+    const { maxHierarchy, page, limit = 20 } = req.query;
+    const allRoles = await roleService.getAllRoles(maxHierarchy ? parseInt(maxHierarchy) : null);
+    
+    // If no pagination requested, return all roles (for dropdowns)
+    if (!page) {
+      return res.json({
+        success: true,
+        data: { roles: allRoles }
+      });
+    }
+    
+    // With pagination
+    const total = allRoles.length;
+    const startIndex = (+page - 1) * +limit;
+    const endIndex = startIndex + +limit;
+    const paginatedRoles = allRoles.slice(startIndex, endIndex);
     
     res.json({
       success: true,
-      data: { roles }
+      data: { 
+        roles: paginatedRoles,
+        pagination: {
+          current: +page,
+          pages: Math.ceil(total / limit),
+          total
+        }
+      }
     });
 
   } catch (error) {

@@ -16,7 +16,14 @@ router.get('/transactions', authenticate, authorize(...ADMIN), async (req, res) 
     const total = await Transaction.countDocuments(filter);
     const transactions = await Transaction.find(filter)
       .populate('invoice', 'invoiceNumber')
-      .populate('project', 'name')
+      .populate({
+        path: 'project',
+        select: 'name',
+        populate: {
+          path: 'client',
+          select: 'name company'
+        }
+      })
       .populate('recordedBy', 'name')
       .sort({ date: -1 })
       .skip((+page - 1) * +limit)
@@ -55,6 +62,42 @@ router.post('/transactions', authenticate, authorize(...ADMIN), async (req, res)
     });
 
     res.status(201).json({ success: true, message: 'Transaction recorded', data: { transaction: tx } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/accounting/transactions/:id
+router.get('/transactions/:id', authenticate, authorize(...ADMIN), async (req, res) => {
+  try {
+    const tx = await Transaction.findById(req.params.id)
+      .populate('invoice', 'invoiceNumber')
+      .populate('project', 'name')
+      .populate('recordedBy', 'name')
+      .lean();
+    if (!tx) return res.status(404).json({ success: false, message: 'Transaction not found' });
+    res.json({ success: true, data: { transaction: tx } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PUT /api/accounting/transactions/:id
+router.put('/transactions/:id', authenticate, authorize(...ADMIN), async (req, res) => {
+  try {
+    const { type, category, amount, description, date, reference, invoice, project } = req.body;
+    const tx = await Transaction.findByIdAndUpdate(
+      req.params.id,
+      {
+        type, category, amount: parseFloat(amount), description, reference,
+        date: date ? new Date(date) : undefined,
+        invoice: invoice || undefined,
+        project: project || undefined,
+      },
+      { new: true, runValidators: true }
+    );
+    if (!tx) return res.status(404).json({ success: false, message: 'Transaction not found' });
+    res.json({ success: true, message: 'Transaction updated', data: { transaction: tx } });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
