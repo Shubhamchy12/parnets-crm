@@ -63,7 +63,7 @@ mongoose.connect(process.env.MONGODB_URI)
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  process.env.FRONTEND_URL_PROD || 'http://localhost:5002',
+  process.env.FRONTEND_URL_PROD || 'https://parnetscrm.onrender.com',
   'http://localhost:5173',
   'http://localhost:5174',
 ];
