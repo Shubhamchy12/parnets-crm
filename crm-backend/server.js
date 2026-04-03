@@ -39,7 +39,7 @@ import quotationRoutes from './routes/quotations.js';
 import quoteRoutes from './routes/quotes.js';
 import emailService from './services/emailService.js';
 
-// Initialize email service (singleton will auto-configure)
+// Initialize email service
 console.log('📧 Initializing email service...');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

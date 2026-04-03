@@ -900,39 +900,97 @@ router.post('/:id/send-email', authenticate, authorize('super_admin', 'admin', '
 
 // POST /api/invoices/:id/send-whatsapp
 router.post('/:id/send-whatsapp', authenticate, authorize('super_admin', 'admin', 'sales'), async (req, res) => {
+  console.log('📱 Send WhatsApp request received for invoice:', req.params.id);
+  
   try {
+    // Find invoice
     const invoice = await Invoice.findById(req.params.id).lean();
-    if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
-
-    const clientDetails = invoice.client ? await resolveClient(invoice.client) : null;
-    const clientPhone = clientDetails?.phone || invoice.clientPhone;
-    if (!clientPhone) return res.status(400).json({ success: false, message: 'Client has no phone number' });
-
-    const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM } = process.env;
-    if (!TWILIO_ACCOUNT_SID || TWILIO_ACCOUNT_SID === 'your-twilio-account-sid') {
-      return res.status(503).json({ success: false, message: 'WhatsApp (Twilio) not configured.' });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
-    const itemLines = (invoice.items || []).map(i => `â€¢ ${i.description}: â‚¹${((i.qty || 1) * (i.rate || 0)).toLocaleString()}`).join('\n');
-    const message = `*Invoice ${invoice.invoiceNumber}*${invoice.installmentLabel ? '\nInstallment: ' + invoice.installmentLabel : ''}\n\n${itemLines}\n\n*Amount: â‚¹${Number(invoice.total || 0).toLocaleString()}*${invoice.remainingAmount > 0 ? '\nRemaining: â‚¹' + Number(invoice.remainingAmount).toLocaleString('en-IN') : ''}\n${invoice.dueDate ? `Due: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}` : ''}\n\nRegards,\nParnets Software India Pvt Ltd`;
+    // Get client details
+    const clientDetails = invoice.client ? await resolveClient(invoice.client) : null;
+    const clientPhone = clientDetails?.phone || invoice.clientPhone;
+    const clientName = clientDetails?.name || invoice.clientName || 'Valued Customer';
 
-    const toNumber = `whatsapp:+91${clientPhone.replace(/\D/g, '').slice(-10)}`;
-    const authHeader = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-    const twilioRes = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
-      {
-        method: 'POST',
-        headers: { 'Authorization': `Basic ${authHeader}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ From: TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886', To: toNumber, Body: message }),
-      }
-    );
-    const twilioData = await twilioRes.json();
-    if (!twilioRes.ok) return res.status(400).json({ success: false, message: twilioData.message || 'WhatsApp send failed' });
+    if (!clientPhone) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Client has no phone number' 
+      });
+    }
 
-    await Invoice.findByIdAndUpdate(invoice._id, { status: 'sent', sentAt: new Date(), sentVia: 'whatsapp' });
-    res.json({ success: true, message: `Invoice sent via WhatsApp to ${clientPhone}` });
-  } catch (e) {
-    res.status(500).json({ success: false, message: e.message || 'Failed to send WhatsApp' });
+    console.log(`📱 Generating WhatsApp link for: ${clientName} (${clientPhone})`);
+
+    // Format invoice items
+    const itemLines = (invoice.items || [])
+      .map(item => {
+        const qty = item.qty || 1;
+        const rate = item.rate || 0;
+        const amount = qty * rate;
+        return `- ${item.description}: Rs.${amount.toLocaleString('en-IN')}`;
+      })
+      .join('\n');
+
+    // Format amounts
+    const totalAmount = Number(invoice.totalAmount || invoice.total || 0);
+    const remainingAmount = Number(invoice.remainingAmount || 0);
+
+    // Format due date
+    const dueDate = invoice.dueDate 
+      ? new Date(invoice.dueDate).toLocaleDateString('en-IN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })
+      : '';
+
+    // Build WhatsApp message
+    const messageParts = [
+      `*Invoice ${invoice.invoiceNumber}*`,
+      invoice.installmentLabel ? `Installment: ${invoice.installmentLabel}` : '',
+      '',
+      `Dear ${clientName},`,
+      '',
+      itemLines,
+      '',
+      `*Total Amount: Rs.${totalAmount.toLocaleString('en-IN')}*`,
+      remainingAmount > 0 ? `Remaining: Rs.${remainingAmount.toLocaleString('en-IN')}` : '',
+      dueDate ? `Due Date: ${dueDate}` : '',
+      '',
+      'Thank you for your business!',
+      '',
+      'Best regards,',
+      'Parnets Software India Pvt Ltd'
+    ];
+
+    const message = messageParts.filter(Boolean).join('\n').trim();
+
+    // Format phone number for WhatsApp
+    const digits = clientPhone.replace(/\D/g, '');
+    const e164 = digits.length === 10 ? `91${digits}` : digits;
+    const waUrl = `https://wa.me/${e164}?text=${encodeURIComponent(message)}`;
+
+    // Update invoice status
+    await Invoice.findByIdAndUpdate(invoice._id, { 
+      status: 'sent', 
+      sentAt: new Date(), 
+      sentVia: 'whatsapp' 
+    });
+
+    console.log('✅ WhatsApp URL generated successfully');
+    res.json({ 
+      success: true, 
+      message: 'WhatsApp link ready',
+      data: { waUrl }
+    });
+  } catch (error) {
+    console.error('❌ WhatsApp generation error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to generate WhatsApp link' 
+    });
   }
 });
 
