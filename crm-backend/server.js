@@ -49,6 +49,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 5002;
 
+console.log('🔧 Environment:', process.env.NODE_ENV);
+console.log('🌐 Port:', PORT);
+console.log('🔗 Frontend URL:', process.env.FRONTEND_URL);
+
 // Connect to MongoDB then start server
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
@@ -66,15 +70,18 @@ mongoose.connect(process.env.MONGODB_URI)
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  process.env.FRONTEND_URL_PROD || 'https://parnetscrm.onrender.com',
+  'https://parnetscrm.netlify.app',
   'http://localhost:5173',
   'http://localhost:5174',
+  'https://parnetscrm.onrender.com',
 ];
 app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
+    // In production, allow any origin for testing (remove this in final production)
+    if (process.env.NODE_ENV === 'production') return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
