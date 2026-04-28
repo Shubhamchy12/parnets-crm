@@ -63,12 +63,16 @@ router.post('/verify-otp', async (req, res) => {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ success: false, message: 'Email and OTP are required' });
 
-    const record = otpStore[email.toLowerCase()];
+    const emailLower = email.toLowerCase();
+    console.log(`[VERIFY-OTP] Attempting to verify OTP for email: ${emailLower}, OTP: ${otp}`);
+    console.log(`[VERIFY-OTP] Available keys in otpStore:`, Object.keys(otpStore));
+    
+    const record = otpStore[emailLower];
     if (!record) return res.status(401).json({ success: false, message: 'No OTP found. Please login again.' });
-    if (Date.now() > record.expiry) { delete otpStore[email.toLowerCase()]; return res.status(401).json({ success: false, message: 'OTP expired.' }); }
+    if (Date.now() > record.expiry) { delete otpStore[emailLower]; return res.status(401).json({ success: false, message: 'OTP expired.' }); }
     if (record.otp !== otp) return res.status(401).json({ success: false, message: 'Invalid OTP.' });
 
-    delete otpStore[email.toLowerCase()];
+    delete otpStore[emailLower];
 
     const user = await User.findById(record.userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -100,8 +104,9 @@ router.post('/resend-otp', async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     const otp = generateOTP();
-    otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
-    console.log(`\n🔐 New OTP for ${email}: ${otp}\n`);
+    const emailLower = email.toLowerCase();
+    otpStore[emailLower] = { otp, expiry: Date.now() + 10 * 60 * 1000, userId: user._id.toString() };
+    console.log(`\n🔐 New OTP for ${emailLower}: ${otp}\n`);
 
     // Send OTP email - super_admin gets it on Parnetsales@gmail.com, others on their own email
     const SUPER_ADMIN_EMAIL = 'Parnetsales@gmail.com';
@@ -212,8 +217,9 @@ router.post('/forgot-password', async (req, res) => {
     const user = await User.findOne({ email: email?.toLowerCase() });
     if (!user) return res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
     const otp = generateOTP();
-    otpStore[email.toLowerCase()] = { otp, expiry: Date.now() + 10 * 60 * 1000, type: 'reset', userId: user._id.toString() };
-    console.log(`\n🔑 Password reset OTP for ${email}: ${otp}\n`);
+    const emailLower = email.toLowerCase();
+    otpStore[emailLower] = { otp, expiry: Date.now() + 10 * 60 * 1000, type: 'reset', userId: user._id.toString() };
+    console.log(`\n🔑 Password reset OTP for ${emailLower}: ${otp}\n`);
     
     // Send password reset OTP email - super_admin gets it on Parnetsales@gmail.com, others on their own email
     const SUPER_ADMIN_EMAIL = 'Parnetsales@gmail.com';
@@ -240,13 +246,14 @@ router.post('/reset-password', async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ success: false, message: 'email, otp, newPassword required' });
-    const record = otpStore[email.toLowerCase()];
+    const emailLower = email.toLowerCase();
+    const record = otpStore[emailLower];
     if (!record || record.otp !== otp || Date.now() > record.expiry) return res.status(401).json({ success: false, message: 'Invalid or expired OTP' });
     const user = await User.findById(record.userId).select('+password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     user.password = newPassword;
     await user.save();
-    delete otpStore[email.toLowerCase()];
+    delete otpStore[emailLower];
     res.json({ success: true, message: 'Password reset successfully' });
   } catch {
     res.status(500).json({ success: false, message: 'Server error' });
